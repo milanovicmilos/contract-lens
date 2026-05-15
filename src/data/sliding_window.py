@@ -10,18 +10,19 @@ Maintains metadata about:
 - Window index
 """
 
-from dataclasses import dataclass, field
-from typing import List, Tuple, Dict, Any, Optional
 import logging
+from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
 
 class TokenizerStrategy(Enum):
     """Strategy for tokenization."""
+
     CHARACTER = "character"  # Split by character count
-    SENTENCE = "sentence"    # Split by sentences (future)
+    SENTENCE = "sentence"  # Split by sentences (future)
     PARAGRAPH = "paragraph"  # Split by paragraphs (future)
 
 
@@ -265,9 +266,7 @@ class SlidingWindowTokenizer:
         # Find text within window
         local_start = span.content.find(text_within_window)
         if local_start == -1:
-            raise ValueError(
-                f"Text '{text_within_window}' not found in window {span.window_id}"
-            )
+            raise ValueError(f"Text '{text_within_window}' not found in window {span.window_id}")
 
         local_end = local_start + len(text_within_window)
 

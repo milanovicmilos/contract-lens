@@ -5,22 +5,22 @@ This script parses the `cuad_squad.jsonl` export and fine-tunes a model
 using standardized overlapping chunking (stride) from HF tokenizers.
 """
 
-import os
 import argparse
 import logging
 from pathlib import Path
 
 from datasets import load_dataset
 from transformers import (
-    AutoTokenizer,
     AutoModelForQuestionAnswering,
-    TrainingArguments,
-    Trainer,
+    AutoTokenizer,
     DefaultDataCollator,
+    Trainer,
+    TrainingArguments,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
 
 # Standard QA preprocessing optimized for SQuAD format
 def prepare_train_features(examples, tokenizer, pad_on_right=True, max_length=512, doc_stride=128):
@@ -54,7 +54,7 @@ def prepare_train_features(examples, tokenizer, pad_on_right=True, max_length=51
 
         sample_index = sample_mapping[i]
         answers = examples["answers"][sample_index]
-        
+
         # If no answers are given, set the cls_index as answer.
         # Format expects answers to be a dict: {'text': [...], 'answer_start': [...]}
         if len(answers["answer_start"]) == 0:
@@ -75,12 +75,17 @@ def prepare_train_features(examples, tokenizer, pad_on_right=True, max_length=51
                 token_end_index -= 1
 
             # Detect if the answer is out of the span (in which case this feature is labeled with the CLS index).
-            if not (offsets[token_start_index][0] <= start_char and offsets[token_end_index][1] >= end_char):
+            if not (
+                offsets[token_start_index][0] <= start_char
+                and offsets[token_end_index][1] >= end_char
+            ):
                 tokenized_examples["start_positions"].append(cls_index)
                 tokenized_examples["end_positions"].append(cls_index)
             else:
                 # Find token positions
-                while token_start_index < len(offsets) and offsets[token_start_index][0] <= start_char:
+                while (
+                    token_start_index < len(offsets) and offsets[token_start_index][0] <= start_char
+                ):
                     token_start_index += 1
                 tokenized_examples["start_positions"].append(token_start_index - 1)
 
@@ -93,9 +98,15 @@ def prepare_train_features(examples, tokenizer, pad_on_right=True, max_length=51
 
 def main():
     parser = argparse.ArgumentParser(description="Train local Extractive QA Prototype")
-    parser.add_argument("--model_name", type=str, default="microsoft/deberta-v3-base", help="Base model")
-    parser.add_argument("--data_file", type=str, default="data/processed/cuad_squad.jsonl", help="JSONL Dataset")
-    parser.add_argument("--output_dir", type=str, default="models/deberta-cuad-prototype", help="Output directory")
+    parser.add_argument(
+        "--model_name", type=str, default="microsoft/deberta-v3-base", help="Base model"
+    )
+    parser.add_argument(
+        "--data_file", type=str, default="data/processed/cuad_squad.jsonl", help="JSONL Dataset"
+    )
+    parser.add_argument(
+        "--output_dir", type=str, default="models/deberta-cuad-prototype", help="Output directory"
+    )
     args = parser.parse_args()
 
     root_dir = Path(__file__).resolve().parent.parent.parent.parent
@@ -103,33 +114,35 @@ def main():
     out_path = root_dir / args.output_dir
 
     if not data_path.exists():
-        logger.error(f"Dataset not found at {data_path}. Run scripts/prepare_squad_dataset.py first.")
+        logger.error(
+            f"Dataset not found at {data_path}. Run scripts/prepare_squad_dataset.py first."
+        )
         return
 
     logger.info("Loading dataset via HuggingFace datasets...")
     # HF datasets load jsonl inherently
     raw_datasets = load_dataset("json", data_files={"train": str(data_path)})
-    
+
     # Split into train/validation natively
     split = raw_datasets["train"].train_test_split(test_size=0.1, seed=42)
-    
+
     logger.info(f"Loading Tokenizer: {args.model_name}")
     tokenizer = AutoTokenizer.from_pretrained(args.model_name, use_fast=True)
     pad_on_right = tokenizer.padding_side == "right"
-    
+
     logger.info("Applying Map to chunk and tokenize data...")
     tokenized_datasets = split.map(
         lambda examples: prepare_train_features(
-            examples, 
-            tokenizer=tokenizer, 
+            examples,
+            tokenizer=tokenizer,
             pad_on_right=pad_on_right,
-            max_length=512,     # Typical context max length
-            doc_stride=128      # Overlapping chunks stride
+            max_length=512,  # Typical context max length
+            doc_stride=128,  # Overlapping chunks stride
         ),
         batched=True,
         remove_columns=split["train"].column_names,
     )
-    
+
     logger.info("Initializing AutoModelForQuestionAnswering...")
     model = AutoModelForQuestionAnswering.from_pretrained(args.model_name)
 
@@ -142,7 +155,7 @@ def main():
         num_train_epochs=3,
         weight_decay=0.01,
         save_total_limit=2,
-        logging_dir='./logs',
+        logging_dir="./logs",
         logging_steps=50,
         fp16=True,  # Mixed precision
     )
@@ -160,7 +173,7 @@ def main():
 
     logger.info("Starting training...")
     trainer.train()
-    
+
     logger.info(f"Saving final model to {out_path}")
     trainer.save_model(str(out_path))
 

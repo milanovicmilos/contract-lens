@@ -5,14 +5,14 @@ Loads CUAD dataset (SQuAD format), maps clauses with master_clauses.csv,
 and provides utilities for creating train/val/test splits.
 """
 
-import json
 import csv
-import logging
-from pathlib import Path
-from dataclasses import dataclass, asdict
-from typing import Dict, List, Tuple, Optional, Any
-from collections import defaultdict
 import hashlib
+import json
+import logging
+from collections import defaultdict
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -257,10 +257,7 @@ class CUADDataset:
                     break
 
             # Determine if binary or extraction
-            is_binary = any(
-                ans.lower() in ("yes", "no")
-                for ans in examples[:3]
-            )
+            is_binary = any(ans.lower() in ("yes", "no") for ans in examples[:3])
 
             category = ClauseCategory(
                 question_id=q_id,

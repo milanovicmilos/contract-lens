@@ -9,19 +9,20 @@ canonical plain text/markdown format suitable for NLP processing. Handles:
 - Table structure preservation
 """
 
+import logging
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Dict, Any, List
-import re
-import logging
+from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
 
 
 class DocumentFormat(Enum):
     """Supported document formats."""
+
     TXT = "txt"
     PDF = "pdf"
     DOCX = "docx"
@@ -40,6 +41,7 @@ class NormalizedDocument:
         page_count: Total number of pages (if applicable).
         metadata: Additional metadata (title, date, etc.).
     """
+
     filename: str
     content: str
     format: DocumentFormat
@@ -272,7 +274,7 @@ class DocumentNormalizerFactory:
         try:
             format_ = DocumentFormat[suffix.upper()]
         except KeyError:
-            raise ValueError(f"Unsupported format: {suffix}")
+            raise ValueError(f"Unsupported format: {suffix}") from None
 
         normalizer = cls.get_normalizer(format_)
         return normalizer.normalize(file_path)
