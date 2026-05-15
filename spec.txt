@@ -1,0 +1,126 @@
+Project ContractLens: Enterprise Legal AI Orchestrator
+ContractLens je hibridni sistem za automatizovanu analizu pravnih rizika koji kombinuje lokalno trenirane Extractive Transformer modele i Reasoning Agent arhitekturu. Sistem je projektovan da rešava problem „crne kutije“ u pravnim tehnologijama pružajući traceable (sledljiva) objašnjenja za svaku identifikovanu rizičnu klauzulu.
+
+1. Vision & Core Mission
+U 2026. godini, AI u pravnom sektoru više nije samo „chatbot“. ContractLens cilja na:
+
+Preciznost (High-Fidelity): Identifikacija 41 ključne kategorije rizika sa preciznošću iznad 90%.
+
+Transparentnost: Svaki „Risk Score“ mora biti potkrepljen citatom iz ugovora i referencom na važeći zakon.
+
+Privacy-First: Osetljivi podaci se procesuiraju lokalno korišćenjem kvantizovanih modela pre slanja na cloud agente.
+
+2. Dataset & Data Engineering
+Projekat primarno koristi CUAD (Contract Understanding Atticus Dataset).
+
+Opis podataka: 510+ komercijalnih ugovora, 13,000+ anotacija.  
+
+Zadatak: Multi-label klasifikacija i Extractive Question Answering (pronalalaženje tačnih koordinata teksta u dokumentu).
+
+Preprocessing Pipeline (Clean Code):
+
+DocumentNormalizer: Konverzija PDF/DOCX u Markdown (čuvajući strukturu tabela).
+
+SlidingWindowTokenization: Rešavanje problema kontekstnog prozora (npr. ugovori od 100 strana se dele u preklapajuće blokove).
+
+Korisni link: CUAD Dataset na Kaggle-u
+
+  
+
+3. System Architecture (The "Clean" Way)
+Arhitektura prati Hexagonal / Clean Architecture principe kako bi se AI modeli (Infrastruktura) mogli lako menjati bez uticaja na poslovnu logiku (Domain).
+
+A. Domain Layer (The Core)
+Contract: Entitet koji sadrži meta-podatke i listu klauzula.
+
+RiskPolicy: Skup pravila po kojima se ugovor ocenjuje.
+
+IRiskAnalyzer: Interfejs koji definiše ugovor za analizu (Dependency Inversion).
+
+B. Application Layer (Use Cases)
+AnalyzeContractUseCase: Koordinira tok između ekstrakcije i agenturnog zaključivanja.
+
+GenerateComplianceReport: Sintetizuje nalaze u PDF/JSON format.
+
+C. Infrastructure Layer (AI & Tools)
+Deep Learning Engine (Lokalno):
+
+Model: DeBERTa-v3-Legal-Large (fine-tuned na T4 GPU).
+
+Uloga: Brza ekstrakcija pasusa (npr. gde se pominje "Indemnification").
+
+Agentic Orchestrator (LangGraph):
+
+State-machine koji upravlja tokom između agenata.
+
+Vector DB (ChromaDB/Pinecone):
+
+Skladištenje pravnih regulativa (npr. GDPR, EU AI Act 2026) za RAG.
+
+4. Agentic Workflow (The "Intelligent" Part)
+Sistem koristi Multi-Agent Collaboration pristup:
+
+Extractor Agent: Koristi tvoj lokalni DL model da „iseče“ ugovor na relevantne delove.
+
+Validator Agent: Proverava da li je izvučeni tekst zaista klauzula ili samo naslov/fusnota.
+
+Legal Consultant Agent: (Koristi OpenAI API - npr. GPT-4o) Poredi izvučenu klauzulu sa bazom zakona (RAG) i traži anomalije. OpenAI tokeni se koriste isključivo za anonimizovane tekstove ili specifične složene procene.
+
+Risk Auditor Agent: Finalni agent koji dodeljuje ocenu (Low, Medium, High) i piše obrazloženje.
+
+5. Tehnološki Standardi & Inženjerske Prakse
+Za GitHub repozitorijum, projekat mora demonstrirati:
+
+SOLID & Design Patterns:
+
+Strategy Pattern za LLM provajdere (fokus na OpenAI API, uz definisan interfejs za buduće ekstenzije).
+
+Factory Pattern za kreiranje specifičnih parsera dokumenata.
+
+Testing Strategy:
+
+Unit testovi za logiku risk-scoringa.
+
+Integration testovi za API endpointe.
+
+LLM Evaluation (RAGAS): Evaluacija agenturnih odgovora (Faithfulness, Relevancy).
+
+DevOps & Deployment:
+
+Dockerfile sa multi-stage build-om (posebno za Python environment, posebno za ML weights).
+
+GitHub Actions za CI/CD i automatski linting (Ruff/Black).
+
+6. Realizacija na Kaggle (The "Deep Learning" Component)
+Ovo nije samo "wrapper". Tvoj doprinos je Fine-tuning:
+
+Hardver: NVIDIA T4 x2 (Kaggle).
+
+Tehnika: LoRA (Low-Rank Adaptation) ili QLoRA za efikasan trening na 16-bitnim težinama.
+
+Metrika uspeha: Dostizanje F1 score-a preko 0.85 na CUAD test setu.  
+
+7. Primere Primene (Showcase)
+M&A Due Diligence: Brza provera 1000 ugovora pre kupovine firme.
+
+Freelance Contract Review: Automatsko upozorenje za frilensere na "IP transfer" klauzule.
+
+GDPR Compliance: Provera da li ugovori o obradi podataka (DPA) sadrže sve obavezne članove.
+
+📂 GitHub Struktura Foldera (Preporuka):
+Plaintext
+contract-lens/
+├── .github/workflows/      # CI/CD
+├── data/                   # Skripte za download CUAD-a
+├── docs/                   # Dokumentacija i dijagrami (Mermaid.js)
+├── src/
+│   ├── domain/             # Entities, Abstractions
+│   ├── application/        # Use Cases
+│   ├── infrastructure/
+│   │   ├── ai/             # Local Model Inference, Training scripts
+│   │   ├── agents/         # LangGraph workflows
+│   │   └── database/       # VectorDB & RAG logic
+│   └── web_api/            # FastAPI endpoints
+├── tests/                  # Unit & Integration tests
+├── requirements.txt
+└── README.md               # Ova specifikacija, lepo formatirana
