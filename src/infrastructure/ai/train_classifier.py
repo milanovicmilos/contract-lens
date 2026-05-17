@@ -9,15 +9,12 @@ Expected to be executed on Kaggle using T4 x2 or similar hardware.
 """
 
 import logging
-import os
-from typing import Dict, List
 
 import numpy as np
 from transformers import (
     AutoConfig,
     AutoModelForSequenceClassification,
     AutoTokenizer,
-    Trainer,
     TrainingArguments,
 )
 
