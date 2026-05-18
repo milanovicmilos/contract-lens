@@ -112,23 +112,19 @@ class ContractOrchestrator:
         logger.debug("Running Legal Consultant Agent")
 
         text = state.get("original_text", "")
-        # Real integration with OpenAI via Langchain
-        if self.llm_client:
-            from langchain_core.messages import SystemMessage, HumanMessage
+        
+        if not self.llm_client:
+            raise ValueError("LLM Client is not initialized. Cannot perform legal consultation.")
             
-            prompt = [
-                SystemMessage(content="You are an expert legal consultant. Provide a brief (1-2 sentences) analysis of the risks present in the following contract clause. If standard and non-hazardous, state that. Focus on potentially dangerous obligations or liabilities."),
-                HumanMessage(content=f"Clause text:\n\n{text}")
-            ]
-            try:
-                response = self.llm_client.invoke(prompt)
-                analysis = response.content
-            except Exception as e:
-                logger.error(f"Error calling LLM Consultant: {e}")
-                analysis = "Legal consultant unavailable. Proceeding with heuristics."
-        else:
-            # Fallback
-            analysis = "Legal consultant analyzed the terms and found standard operational parameters."
+        from langchain_core.messages import SystemMessage, HumanMessage
+        
+        prompt = [
+            SystemMessage(content="You are an expert legal consultant. Provide a brief (1-2 sentences) analysis of the risks present in the following contract clause. If standard and non-hazardous, state that. Focus on potentially dangerous obligations or liabilities."),
+            HumanMessage(content=f"Clause text:\n\n{text}")
+        ]
+        
+        response = self.llm_client.invoke(prompt)
+        analysis = response.content
 
         return {"consultant_analysis": analysis}
 

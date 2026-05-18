@@ -23,10 +23,7 @@ class LLMEvaluator:
         faithful to the original text.
         """
         if not self.llm_client:
-            # Fallback for testing without LLM
-            return EvaluationResult(
-                metric_name="faithfulness", score=1.0, reasoning="Fallback: perfectly faithful."
-            )
+            raise ValueError("LLM client requires a valid instance for faithfulness evaluation.")
 
         evaluation = self.llm_client.evaluate(
             original_text=original_text, justification=risk_score.justification

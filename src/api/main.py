@@ -36,10 +36,10 @@ async def startup_event():
     
     # Real OpenAI Client from Langchain
     openai_api_key = os.getenv("OPENAI_API_KEY")
-    if openai_api_key:
-        llm = ChatOpenAI(model="gpt-4o", openai_api_key=openai_api_key, temperature=0.0)
-    else:
-        llm = None
+    if not openai_api_key:
+        raise ValueError("OPENAI_API_KEY environment variable is missing. API cannot start.")
+        
+    llm = ChatOpenAI(model="gpt-4o", openai_api_key=openai_api_key, temperature=0.0)
         
     policy = RiskPolicy(rules={}) # Default rules
     
