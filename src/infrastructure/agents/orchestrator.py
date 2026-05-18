@@ -97,7 +97,7 @@ class ContractOrchestrator:
 
         text = state.get("original_text", "")
         # Very naive heuristic for PoC: if it's too short, it's a header, not a clause
-        is_valid = len(text.split()) > 5
+        is_valid = len(text.split()) >= 5
 
         return {"is_valid_clause": is_valid}
 
@@ -111,8 +111,24 @@ class ContractOrchestrator:
         """Node 3: Consults external/stub LLM for sophisticated reasoning (OpenAI/RAG)."""
         logger.debug("Running Legal Consultant Agent")
 
-        # In a real setup, we would prompt self.llm_client and query ChromaDB
-        analysis = "Legal consultant analyzed the terms and found standard operational parameters."
+        text = state.get("original_text", "")
+        # Real integration with OpenAI via Langchain
+        if self.llm_client:
+            from langchain_core.messages import SystemMessage, HumanMessage
+            
+            prompt = [
+                SystemMessage(content="You are an expert legal consultant. Provide a brief (1-2 sentences) analysis of the risks present in the following contract clause. If standard and non-hazardous, state that. Focus on potentially dangerous obligations or liabilities."),
+                HumanMessage(content=f"Clause text:\n\n{text}")
+            ]
+            try:
+                response = self.llm_client.invoke(prompt)
+                analysis = response.content
+            except Exception as e:
+                logger.error(f"Error calling LLM Consultant: {e}")
+                analysis = "Legal consultant unavailable. Proceeding with heuristics."
+        else:
+            # Fallback
+            analysis = "Legal consultant analyzed the terms and found standard operational parameters."
 
         return {"consultant_analysis": analysis}
 
