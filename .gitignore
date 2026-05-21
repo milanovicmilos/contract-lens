@@ -118,3 +118,10 @@ volumes/
 # Compiled documentation
 site/
 docs/_build/
+
+# Claude Code per-developer settings
+.claude/
+
+# Kaggle dataset staging (data files, not metadata/scripts)
+kaggle/datasets/*/cuad_*.jsonl
+kaggle/datasets/*/*.zip
