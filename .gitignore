@@ -122,6 +122,9 @@ docs/_build/
 # Claude Code per-developer settings
 .claude/
 
+# Local Chroma vector store (regenerated via scripts/seed_regulations.py)
+chroma_db/
+
 # Kaggle dataset staging (data files, not metadata/scripts)
 kaggle/datasets/*/cuad_*.jsonl
 kaggle/datasets/*/*.zip
