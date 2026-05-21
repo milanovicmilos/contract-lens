@@ -58,13 +58,13 @@ def train_classifier(
     logger.info(f"Starting Multi-label classifier training using {model_name}")
 
     # 1. Load tokenizer and model
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    AutoTokenizer.from_pretrained(model_name)
 
     config = AutoConfig.from_pretrained(
         model_name, num_labels=num_labels, problem_type="multi_label_classification"
     )
 
-    model = AutoModelForSequenceClassification.from_pretrained(model_name, config=config)
+    AutoModelForSequenceClassification.from_pretrained(model_name, config=config)
 
     # 2. Dataset preparation
     # Here we would load the 'dataset_path' using HuggingFace 'datasets' library
@@ -77,7 +77,7 @@ def train_classifier(
     logger.warning("Mocking the HF dataset for architectural completeness.")
 
     # 3. Setup training arguments
-    training_args = TrainingArguments(
+    TrainingArguments(
         output_dir=output_dir,
         eval_strategy="epoch",
         learning_rate=2e-5,

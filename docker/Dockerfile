@@ -1,6 +1,6 @@
 # Multi-stage Dockerfile for ContractLens
 # Stage 1: Base Python environment
-FROM python:3.11-slim as base
+FROM python:3.11-slim AS base
 
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Stage 2: Development environment
-FROM base as dev
+FROM base AS dev
 
 # Copy requirements
 COPY requirements-dev.txt .
@@ -25,7 +25,7 @@ RUN pip install --no-cache-dir -r requirements-dev.txt
 COPY . .
 
 # Set PYTHONPATH
-ENV PYTHONPATH=/app/src:$PYTHONPATH
+ENV PYTHONPATH="/app/src"
 
 # Expose API port
 EXPOSE 8000
@@ -34,7 +34,7 @@ EXPOSE 8000
 CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
 # Stage 3: Production inference environment (minimal)
-FROM base as inference
+FROM base AS inference
 
 # Create lightweight runtime dependencies
 RUN echo "torch>=2.0.0" > /tmp/runtime-reqs.txt && \
@@ -44,7 +44,10 @@ RUN echo "torch>=2.0.0" > /tmp/runtime-reqs.txt && \
     echo "pydantic>=2.0.0" >> /tmp/runtime-reqs.txt && \
     echo "chromadb>=0.4.0" >> /tmp/runtime-reqs.txt && \
     echo "openai>=1.3.0" >> /tmp/runtime-reqs.txt && \
-    echo "langchain>=0.1.0" >> /tmp/runtime-reqs.txt
+    echo "langchain>=0.1.0" >> /tmp/runtime-reqs.txt && \
+    echo "langchain-core>=0.1.0" >> /tmp/runtime-reqs.txt && \
+    echo "langchain-openai>=0.0.2" >> /tmp/runtime-reqs.txt && \
+    echo "python-dotenv>=1.0.0" >> /tmp/runtime-reqs.txt
 
 RUN pip install --no-cache-dir -r /tmp/runtime-reqs.txt
 
@@ -52,7 +55,7 @@ RUN pip install --no-cache-dir -r /tmp/runtime-reqs.txt
 COPY src/ /app/src/
 COPY .env.example /app/.env.example
 
-ENV PYTHONPATH=/app/src:$PYTHONPATH
+ENV PYTHONPATH="/app/src"
 
 EXPOSE 8000
 
@@ -63,13 +66,13 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 # Stage 4: Training environment (Kaggle-compatible)
-FROM base as training
+FROM base AS training
 
 COPY requirements-dev.txt .
 RUN pip install --no-cache-dir -r requirements-dev.txt
 
 COPY . .
-ENV PYTHONPATH=/app/src:$PYTHONPATH
+ENV PYTHONPATH="/app/src"
 
 WORKDIR /app/kaggle
 

@@ -10,7 +10,9 @@ class IVectorDatabase(ABC):
     """
 
     @abstractmethod
-    def add_texts(self, texts: List[str], metadatas: List[Dict[str, Any]] = None, ids: List[str] = None) -> None:
+    def add_texts(
+        self, texts: List[str], metadatas: List[Dict[str, Any]] = None, ids: List[str] = None
+    ) -> None:
         """
         Adds texts to the vector database.
 

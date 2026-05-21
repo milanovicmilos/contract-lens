@@ -43,9 +43,7 @@ class ChromaWrapper(IVectorDatabase):
         try:
             logger.info(f"Initializing ChromaDB at {self.persist_directory}")
             self.client = chromadb.PersistentClient(path=self.persist_directory)
-            self._collection = self.client.get_or_create_collection(
-                name=self.collection_name
-            )
+            self._collection = self.client.get_or_create_collection(name=self.collection_name)
         except Exception as e:
             logger.error(f"Failed to initialize ChromaDB: {e}")
             self._collection = None
@@ -88,14 +86,8 @@ class ChromaWrapper(IVectorDatabase):
             formatted_results = []
             if results["documents"] and len(results["documents"]) > 0:
                 docs = results["documents"][0]
-                metas = (
-                    results["metadatas"][0]
-                    if results["metadatas"]
-                    else [{} for _ in docs]
-                )
-                distances = (
-                    results["distances"][0] if results["distances"] else [0.0 for _ in docs]
-                )
+                metas = results["metadatas"][0] if results["metadatas"] else [{} for _ in docs]
+                distances = results["distances"][0] if results["distances"] else [0.0 for _ in docs]
 
                 for doc, meta, dist in zip(docs, metas, distances, strict=False):
                     formatted_results.append(

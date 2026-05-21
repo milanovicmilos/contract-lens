@@ -112,17 +112,19 @@ class ContractOrchestrator:
         logger.debug("Running Legal Consultant Agent")
 
         text = state.get("original_text", "")
-        
+
         if not self.llm_client:
             raise ValueError("LLM Client is not initialized. Cannot perform legal consultation.")
-            
-        from langchain_core.messages import SystemMessage, HumanMessage
-        
+
+        from langchain_core.messages import HumanMessage, SystemMessage
+
         prompt = [
-            SystemMessage(content="You are an expert legal consultant. Provide a brief (1-2 sentences) analysis of the risks present in the following contract clause. If standard and non-hazardous, state that. Focus on potentially dangerous obligations or liabilities."),
-            HumanMessage(content=f"Clause text:\n\n{text}")
+            SystemMessage(
+                content="You are an expert legal consultant. Provide a brief (1-2 sentences) analysis of the risks present in the following contract clause. If standard and non-hazardous, state that. Focus on potentially dangerous obligations or liabilities."
+            ),
+            HumanMessage(content=f"Clause text:\n\n{text}"),
         ]
-        
+
         response = self.llm_client.invoke(prompt)
         analysis = response.content
 

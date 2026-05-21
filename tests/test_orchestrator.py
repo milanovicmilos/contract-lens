@@ -30,7 +30,7 @@ def orchestrator():
 
 def test_orchestrator_valid_flow(orchestrator):
     """Test full LangGraph flow for a valid clause."""
-    text = "This contract may terminate immediately. Blah blah blah." # added words to pass validation (>5)
+    text = "This contract may terminate immediately. Blah blah blah."  # added words to pass validation (>5)
 
     risks = orchestrator.analyze(text)
 

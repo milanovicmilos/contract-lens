@@ -1,9 +1,9 @@
-import pytest
 from unittest.mock import MagicMock
 
-from src.application.interfaces.irisk_analyzer import RiskScore
+import pytest
 
 from src.application.evaluation.evaluator import LLMEvaluator
+from src.application.interfaces.irisk_analyzer import RiskScore
 
 
 def test_evaluate_faithfulness_with_mock():
@@ -42,5 +42,7 @@ def test_evaluate_faithfulness_missing_client():
         metadata={},
     )
 
-    with pytest.raises(ValueError, match="LLM client requires a valid instance for faithfulness evaluation."):
+    with pytest.raises(
+        ValueError, match="LLM client requires a valid instance for faithfulness evaluation."
+    ):
         evaluator.evaluate_faithfulness(risk_score, "Company liability is capped at 1000 USD.")
