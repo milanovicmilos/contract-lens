@@ -78,7 +78,6 @@ REGULATION_SNIPPETS: List[Dict] = [
         ),
         "metadata": {"source": "GDPR", "chapter": "V", "tags": "transfers,scc,bcr"},
     },
-
     # ----- EU AI Act (Regulation (EU) 2024/1689) -----
     {
         "id": "ai-act-art-5-prohibited",
@@ -112,7 +111,6 @@ REGULATION_SNIPPETS: List[Dict] = [
         ),
         "metadata": {"source": "EU AI Act", "article": "99", "tags": "penalties,fines"},
     },
-
     # ----- Common-law contract principles (paraphrased for RAG context) -----
     {
         "id": "principle-uncapped-liability",

@@ -47,17 +47,47 @@ PROB_THRESHOLD = 0.5
 
 # CUAD category list, must match prepare_multilabel_dataset.py output
 CUAD_CATEGORIES = [
-    "Document Name", "Parties", "Agreement Date", "Effective Date", "Expiration Date",
-    "Renewal Term", "Notice Period To Terminate Renewal", "Governing Law", "Most Favored Nation",
-    "Competitive Restriction Exception", "Non-Compete", "Exclusivity", "No-Solicit Of Customers",
-    "No-Solicit Of Employees", "Non-Disparagement", "Termination For Convenience",
-    "Rofr/Rofo/Rofn", "Change Of Control", "Anti-Assignment", "Revenue/Profit Sharing",
-    "Price Restrictions", "Minimum Commitment", "Volume Restriction", "Ip Ownership Assignment",
-    "Joint Ip Ownership", "License Grant", "Non-Transferable License", "Affiliate License-Licensor",
-    "Affiliate License-Licensee", "Unlimited/All-You-Can-Eat-License",
-    "Irrevocable Or Perpetual License", "Source Code Escrow", "Post-Termination Services",
-    "Audit Rights", "Uncapped Liability", "Cap On Liability", "Liquidated Damages",
-    "Warranty Duration", "Insurance", "Covenant Not To Sue", "Third Party Beneficiary",
+    "Document Name",
+    "Parties",
+    "Agreement Date",
+    "Effective Date",
+    "Expiration Date",
+    "Renewal Term",
+    "Notice Period To Terminate Renewal",
+    "Governing Law",
+    "Most Favored Nation",
+    "Competitive Restriction Exception",
+    "Non-Compete",
+    "Exclusivity",
+    "No-Solicit Of Customers",
+    "No-Solicit Of Employees",
+    "Non-Disparagement",
+    "Termination For Convenience",
+    "Rofr/Rofo/Rofn",
+    "Change Of Control",
+    "Anti-Assignment",
+    "Revenue/Profit Sharing",
+    "Price Restrictions",
+    "Minimum Commitment",
+    "Volume Restriction",
+    "Ip Ownership Assignment",
+    "Joint Ip Ownership",
+    "License Grant",
+    "Non-Transferable License",
+    "Affiliate License-Licensor",
+    "Affiliate License-Licensee",
+    "Unlimited/All-You-Can-Eat-License",
+    "Irrevocable Or Perpetual License",
+    "Source Code Escrow",
+    "Post-Termination Services",
+    "Audit Rights",
+    "Uncapped Liability",
+    "Cap On Liability",
+    "Liquidated Damages",
+    "Warranty Duration",
+    "Insurance",
+    "Covenant Not To Sue",
+    "Third Party Beneficiary",
 ]
 
 
@@ -78,9 +108,7 @@ def compute_metrics(eval_pred) -> Dict[str, float]:
 
 def tokenize_batch(batch: Dict[str, Any], tokenizer) -> Dict[str, Any]:
     """Tokenize text and cast labels to float (BCEWithLogitsLoss requirement)."""
-    enc = tokenizer(
-        batch["text"], truncation=True, max_length=MAX_LENGTH, padding="max_length"
-    )
+    enc = tokenizer(batch["text"], truncation=True, max_length=MAX_LENGTH, padding="max_length")
     enc["labels"] = [[float(v) for v in row] for row in batch["labels"]]
     return enc
 
@@ -131,7 +159,9 @@ def apply_lora(model):
         model = get_peft_model(model, peft_config)
         trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
         total = sum(p.numel() for p in model.parameters())
-        logger.info(f"LoRA applied. Trainable params: {trainable:,}/{total:,} ({100*trainable/total:.2f}%)")
+        logger.info(
+            f"LoRA applied. Trainable params: {trainable:,}/{total:,} ({100*trainable/total:.2f}%)"
+        )
         return model
     except ImportError:
         logger.warning("peft not installed; running full fine-tuning (high VRAM usage).")

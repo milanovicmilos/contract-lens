@@ -42,7 +42,9 @@ def kaggle_status(kernel_id: str) -> str:
     """Return the latest status string for a kernel run."""
     result = subprocess.run(
         ["kaggle", "kernels", "status", kernel_id],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     return (result.stdout or result.stderr).strip()
 
@@ -52,7 +54,9 @@ def kaggle_pull_output(kernel_id: str, dest: Path) -> bool:
     dest.mkdir(parents=True, exist_ok=True)
     result = subprocess.run(
         ["kaggle", "kernels", "output", kernel_id, "-p", str(dest)],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if result.returncode != 0:
         logger.error(f"Failed to pull output for {kernel_id}: {result.stderr}")
@@ -71,8 +75,12 @@ def write_manifest(model_root: Path, kernels: List[str]) -> Path:
 
         entry: Dict = {
             "kernel_id": spec["kernel_id"],
-            "model_dir": str(artifact_dir.relative_to(model_root.parent)) if artifact_dir.exists() else None,
-            "metrics_file": str(metric_path.relative_to(model_root.parent)) if metric_path.exists() else None,
+            "model_dir": (
+                str(artifact_dir.relative_to(model_root.parent)) if artifact_dir.exists() else None
+            ),
+            "metrics_file": (
+                str(metric_path.relative_to(model_root.parent)) if metric_path.exists() else None
+            ),
         }
         if metric_path.exists():
             try:

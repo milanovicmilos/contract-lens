@@ -19,7 +19,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from src.application.interfaces.irisk_analyzer import RiskScore
 
@@ -123,9 +123,7 @@ class LLMEvaluator:
 
     def _require_client(self) -> None:
         if self.llm_client is None:
-            raise ValueError(
-                "LLM client requires a valid instance for faithfulness evaluation."
-            )
+            raise ValueError("LLM client requires a valid instance for faithfulness evaluation.")
 
     def _is_legacy_evaluate_client(self) -> bool:
         return _has_method(self.llm_client, "evaluate")
@@ -139,9 +137,7 @@ class LLMEvaluator:
         )
         return response.content if hasattr(response, "content") else str(response)
 
-    def evaluate_faithfulness(
-        self, risk_score: RiskScore, original_text: str
-    ) -> EvaluationResult:
+    def evaluate_faithfulness(self, risk_score: RiskScore, original_text: str) -> EvaluationResult:
         """Score how well risk_score.justification is supported by original_text."""
         self._require_client()
 
@@ -169,16 +165,12 @@ class LLMEvaluator:
             reasoning=str(parsed.get("reasoning", "Could not parse LLM response.")),
         )
 
-    def evaluate_relevancy(
-        self, category: str, extracted_span: str
-    ) -> EvaluationResult:
+    def evaluate_relevancy(self, category: str, extracted_span: str) -> EvaluationResult:
         """Score whether extracted_span actually relates to category."""
         self._require_client()
 
         if self._is_legacy_evaluate_client():
-            verdict = self.llm_client.evaluate(
-                original_text=extracted_span, justification=category
-            )
+            verdict = self.llm_client.evaluate(original_text=extracted_span, justification=category)
             return EvaluationResult(
                 metric_name="relevancy",
                 score=float(verdict.get("relevancy", verdict.get("faithfulness", 0.0))),

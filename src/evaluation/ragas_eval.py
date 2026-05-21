@@ -108,7 +108,11 @@ def evaluate(
         evaluator = LLMEvaluator(llm_client=llm)
 
     classifier = HFClassifier(model_name_or_path=classifier_model)
-    vector_db = ChromaWrapper(persist_directory=chroma_dir, collection_name="legal_regulations") if chroma_dir else None
+    vector_db = (
+        ChromaWrapper(persist_directory=chroma_dir, collection_name="legal_regulations")
+        if chroma_dir
+        else None
+    )
     orchestrator = ContractOrchestrator(
         classifier=classifier,
         risk_policy=RiskPolicy(),

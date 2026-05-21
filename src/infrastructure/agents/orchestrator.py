@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 HEADER_PATTERNS = [
     re.compile(r"^\s*(?:ARTICLE|SECTION|EXHIBIT|SCHEDULE|ANNEX|APPENDIX)\b", re.IGNORECASE),
     re.compile(r"^\s*\d+(?:\.\d+)*\.?\s*$"),  # bare numbering like "1.2.3"
-    re.compile(r"^\s*[A-Z][A-Z\s]{4,}$"),     # all-caps headers
+    re.compile(r"^\s*[A-Z][A-Z\s]{4,}$"),  # all-caps headers
 ]
 
 CLASSIFICATION_THRESHOLD = 0.5
@@ -128,7 +128,9 @@ class ContractOrchestrator:
         if self.extractor and positive_cats:
             for category in positive_cats:
                 try:
-                    question = f'Highlight the parts (if any) of this contract related to "{category}".'
+                    question = (
+                        f'Highlight the parts (if any) of this contract related to "{category}".'
+                    )
                     results = self.extractor.extract(context=text, question=question, top_k=1)
                     spans[category] = results
                 except Exception as exc:

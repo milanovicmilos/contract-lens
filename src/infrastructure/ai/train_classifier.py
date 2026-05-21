@@ -42,17 +42,47 @@ NUM_LABELS = 41
 PROB_THRESHOLD = 0.5
 
 CUAD_CATEGORIES = [
-    "Document Name", "Parties", "Agreement Date", "Effective Date", "Expiration Date",
-    "Renewal Term", "Notice Period To Terminate Renewal", "Governing Law", "Most Favored Nation",
-    "Competitive Restriction Exception", "Non-Compete", "Exclusivity", "No-Solicit Of Customers",
-    "No-Solicit Of Employees", "Non-Disparagement", "Termination For Convenience",
-    "Rofr/Rofo/Rofn", "Change Of Control", "Anti-Assignment", "Revenue/Profit Sharing",
-    "Price Restrictions", "Minimum Commitment", "Volume Restriction", "Ip Ownership Assignment",
-    "Joint Ip Ownership", "License Grant", "Non-Transferable License", "Affiliate License-Licensor",
-    "Affiliate License-Licensee", "Unlimited/All-You-Can-Eat-License",
-    "Irrevocable Or Perpetual License", "Source Code Escrow", "Post-Termination Services",
-    "Audit Rights", "Uncapped Liability", "Cap On Liability", "Liquidated Damages",
-    "Warranty Duration", "Insurance", "Covenant Not To Sue", "Third Party Beneficiary",
+    "Document Name",
+    "Parties",
+    "Agreement Date",
+    "Effective Date",
+    "Expiration Date",
+    "Renewal Term",
+    "Notice Period To Terminate Renewal",
+    "Governing Law",
+    "Most Favored Nation",
+    "Competitive Restriction Exception",
+    "Non-Compete",
+    "Exclusivity",
+    "No-Solicit Of Customers",
+    "No-Solicit Of Employees",
+    "Non-Disparagement",
+    "Termination For Convenience",
+    "Rofr/Rofo/Rofn",
+    "Change Of Control",
+    "Anti-Assignment",
+    "Revenue/Profit Sharing",
+    "Price Restrictions",
+    "Minimum Commitment",
+    "Volume Restriction",
+    "Ip Ownership Assignment",
+    "Joint Ip Ownership",
+    "License Grant",
+    "Non-Transferable License",
+    "Affiliate License-Licensor",
+    "Affiliate License-Licensee",
+    "Unlimited/All-You-Can-Eat-License",
+    "Irrevocable Or Perpetual License",
+    "Source Code Escrow",
+    "Post-Termination Services",
+    "Audit Rights",
+    "Uncapped Liability",
+    "Cap On Liability",
+    "Liquidated Damages",
+    "Warranty Duration",
+    "Insurance",
+    "Covenant Not To Sue",
+    "Third Party Beneficiary",
 ]
 
 
@@ -70,9 +100,7 @@ def compute_metrics(eval_pred) -> Dict[str, float]:
 
 
 def tokenize_batch(batch: Dict[str, Any], tokenizer, max_length: int) -> Dict[str, Any]:
-    enc = tokenizer(
-        batch["text"], truncation=True, max_length=max_length, padding="max_length"
-    )
+    enc = tokenizer(batch["text"], truncation=True, max_length=max_length, padding="max_length")
     enc["labels"] = [[float(v) for v in row] for row in batch["labels"]]
     return enc
 

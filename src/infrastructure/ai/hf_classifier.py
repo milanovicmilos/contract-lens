@@ -35,17 +35,47 @@ logger = logging.getLogger(__name__)
 
 
 CUAD_CATEGORIES: List[str] = [
-    "Document Name", "Parties", "Agreement Date", "Effective Date", "Expiration Date",
-    "Renewal Term", "Notice Period To Terminate Renewal", "Governing Law", "Most Favored Nation",
-    "Competitive Restriction Exception", "Non-Compete", "Exclusivity", "No-Solicit Of Customers",
-    "No-Solicit Of Employees", "Non-Disparagement", "Termination For Convenience",
-    "Rofr/Rofo/Rofn", "Change Of Control", "Anti-Assignment", "Revenue/Profit Sharing",
-    "Price Restrictions", "Minimum Commitment", "Volume Restriction", "Ip Ownership Assignment",
-    "Joint Ip Ownership", "License Grant", "Non-Transferable License", "Affiliate License-Licensor",
-    "Affiliate License-Licensee", "Unlimited/All-You-Can-Eat-License",
-    "Irrevocable Or Perpetual License", "Source Code Escrow", "Post-Termination Services",
-    "Audit Rights", "Uncapped Liability", "Cap On Liability", "Liquidated Damages",
-    "Warranty Duration", "Insurance", "Covenant Not To Sue", "Third Party Beneficiary",
+    "Document Name",
+    "Parties",
+    "Agreement Date",
+    "Effective Date",
+    "Expiration Date",
+    "Renewal Term",
+    "Notice Period To Terminate Renewal",
+    "Governing Law",
+    "Most Favored Nation",
+    "Competitive Restriction Exception",
+    "Non-Compete",
+    "Exclusivity",
+    "No-Solicit Of Customers",
+    "No-Solicit Of Employees",
+    "Non-Disparagement",
+    "Termination For Convenience",
+    "Rofr/Rofo/Rofn",
+    "Change Of Control",
+    "Anti-Assignment",
+    "Revenue/Profit Sharing",
+    "Price Restrictions",
+    "Minimum Commitment",
+    "Volume Restriction",
+    "Ip Ownership Assignment",
+    "Joint Ip Ownership",
+    "License Grant",
+    "Non-Transferable License",
+    "Affiliate License-Licensor",
+    "Affiliate License-Licensee",
+    "Unlimited/All-You-Can-Eat-License",
+    "Irrevocable Or Perpetual License",
+    "Source Code Escrow",
+    "Post-Termination Services",
+    "Audit Rights",
+    "Uncapped Liability",
+    "Cap On Liability",
+    "Liquidated Damages",
+    "Warranty Duration",
+    "Insurance",
+    "Covenant Not To Sue",
+    "Third Party Beneficiary",
 ]
 
 
@@ -137,9 +167,7 @@ class HFClassifier(IClassifier):
 
         self.label_mapping = self._resolve_label_mapping(label_mapping)
 
-    def _resolve_label_mapping(
-        self, override: Optional[List[str]]
-    ) -> Optional[Dict[str, str]]:
+    def _resolve_label_mapping(self, override: Optional[List[str]]) -> Optional[Dict[str, str]]:
         """Build a 'LABEL_N -> human name' dict when applicable."""
         if override is not None:
             return {f"LABEL_{i}": name for i, name in enumerate(override)}
@@ -151,9 +179,9 @@ class HFClassifier(IClassifier):
             return None
 
         id2label = getattr(self.nlp_pipeline.model.config, "id2label", {}) or {}
-        generic_labels = all(
-            str(v).startswith("LABEL_") for v in id2label.values()
-        ) if id2label else True
+        generic_labels = (
+            all(str(v).startswith("LABEL_") for v in id2label.values()) if id2label else True
+        )
 
         if num_labels == len(CUAD_CATEGORIES) and generic_labels:
             return {f"LABEL_{i}": name for i, name in enumerate(CUAD_CATEGORIES)}

@@ -184,7 +184,9 @@ async def analyze_contract(
 async def health_check():
     """System health check: surfaces orchestrator readiness."""
     return {
-        "status": "ok" if orchestrator is not None or _is_truthy(os.getenv("TESTING")) else "degraded",
+        "status": (
+            "ok" if orchestrator is not None or _is_truthy(os.getenv("TESTING")) else "degraded"
+        ),
         "version": "1.0.0",
         "orchestrator_ready": orchestrator is not None,
     }

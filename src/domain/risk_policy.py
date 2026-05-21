@@ -13,7 +13,6 @@ should tune these via legal counsel review and historical incident data.
 
 from typing import Any, Dict, Optional, Tuple
 
-
 DEFAULT_POLICIES: Dict[str, Dict[str, Any]] = {
     # --- Metadata (low-risk identification) ---
     "Document Name": {
@@ -41,7 +40,6 @@ DEFAULT_POLICIES: Dict[str, Dict[str, Any]] = {
         "default_risk": "Low",
         "rationale": "Contract end; perpetual contracts shift to higher risk.",
     },
-
     # --- Renewal & Termination ---
     "Renewal Term": {
         "high_risk_keywords": ["automatic", "auto-renew", "indefinite"],
@@ -58,14 +56,12 @@ DEFAULT_POLICIES: Dict[str, Dict[str, Any]] = {
         "default_risk": "Medium",
         "rationale": "Absence of convenience termination locks parties in.",
     },
-
     # --- Governance & Jurisdiction ---
     "Governing Law": {
         "high_risk_keywords": ["Russia", "China", "North Korea", "Iran", "Unknown"],
         "default_risk": "Medium",
         "rationale": "Foreign sanctioned jurisdictions create enforcement risk.",
     },
-
     # --- Competitive Restrictions (high risk by nature) ---
     "Most Favored Nation": {
         "high_risk_keywords": ["worldwide", "unlimited", "any customer"],
@@ -102,7 +98,6 @@ DEFAULT_POLICIES: Dict[str, Dict[str, Any]] = {
         "default_risk": "Medium",
         "rationale": "Limits public commentary; review chilling-effect concerns.",
     },
-
     # --- Rights of refusal & control ---
     "Rofr/Rofo/Rofn": {
         "high_risk_keywords": ["all assets", "any transaction"],
@@ -119,7 +114,6 @@ DEFAULT_POLICIES: Dict[str, Dict[str, Any]] = {
         "default_risk": "Medium",
         "rationale": "Strict anti-assignment limits flexibility.",
     },
-
     # --- Commercial terms ---
     "Revenue/Profit Sharing": {
         "high_risk_keywords": ["all revenue", "100%", "gross"],
@@ -141,7 +135,6 @@ DEFAULT_POLICIES: Dict[str, Dict[str, Any]] = {
         "default_risk": "Medium",
         "rationale": "Volume caps limit business growth.",
     },
-
     # --- IP & License (high stakes for tech contracts) ---
     "Ip Ownership Assignment": {
         "high_risk_keywords": ["all ip", "work for hire", "irrevocable"],
@@ -188,7 +181,6 @@ DEFAULT_POLICIES: Dict[str, Dict[str, Any]] = {
         "default_risk": "Medium",
         "rationale": "Escrow release triggers; review trigger conditions.",
     },
-
     # --- Post-termination & audit ---
     "Post-Termination Services": {
         "high_risk_keywords": ["indefinite", "transition assistance"],
@@ -200,7 +192,6 @@ DEFAULT_POLICIES: Dict[str, Dict[str, Any]] = {
         "default_risk": "Medium",
         "rationale": "Audit scope; check notice and frequency limits.",
     },
-
     # --- Liability & damages (always high risk) ---
     "Uncapped Liability": {
         "high_risk_keywords": ["uncapped", "unlimited liability", "no limit"],
@@ -217,7 +208,6 @@ DEFAULT_POLICIES: Dict[str, Dict[str, Any]] = {
         "default_risk": "Medium",
         "rationale": "Liquidated damages must reflect reasonable estimate of harm.",
     },
-
     # --- Warranty & insurance ---
     "Warranty Duration": {
         "high_risk_keywords": ["lifetime", "perpetual"],
@@ -229,7 +219,6 @@ DEFAULT_POLICIES: Dict[str, Dict[str, Any]] = {
         "default_risk": "Medium",
         "rationale": "Insurance requirements protect against counterparty default.",
     },
-
     # --- Remedies & beneficiaries ---
     "Covenant Not To Sue": {
         "high_risk_keywords": ["all claims", "perpetual"],

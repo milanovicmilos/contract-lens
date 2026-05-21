@@ -36,17 +36,47 @@ logger = logging.getLogger(__name__)
 
 
 CUAD_CATEGORIES = [
-    "Document Name", "Parties", "Agreement Date", "Effective Date", "Expiration Date",
-    "Renewal Term", "Notice Period To Terminate Renewal", "Governing Law", "Most Favored Nation",
-    "Competitive Restriction Exception", "Non-Compete", "Exclusivity", "No-Solicit Of Customers",
-    "No-Solicit Of Employees", "Non-Disparagement", "Termination For Convenience",
-    "Rofr/Rofo/Rofn", "Change Of Control", "Anti-Assignment", "Revenue/Profit Sharing",
-    "Price Restrictions", "Minimum Commitment", "Volume Restriction", "Ip Ownership Assignment",
-    "Joint Ip Ownership", "License Grant", "Non-Transferable License", "Affiliate License-Licensor",
-    "Affiliate License-Licensee", "Unlimited/All-You-Can-Eat-License",
-    "Irrevocable Or Perpetual License", "Source Code Escrow", "Post-Termination Services",
-    "Audit Rights", "Uncapped Liability", "Cap On Liability", "Liquidated Damages",
-    "Warranty Duration", "Insurance", "Covenant Not To Sue", "Third Party Beneficiary",
+    "Document Name",
+    "Parties",
+    "Agreement Date",
+    "Effective Date",
+    "Expiration Date",
+    "Renewal Term",
+    "Notice Period To Terminate Renewal",
+    "Governing Law",
+    "Most Favored Nation",
+    "Competitive Restriction Exception",
+    "Non-Compete",
+    "Exclusivity",
+    "No-Solicit Of Customers",
+    "No-Solicit Of Employees",
+    "Non-Disparagement",
+    "Termination For Convenience",
+    "Rofr/Rofo/Rofn",
+    "Change Of Control",
+    "Anti-Assignment",
+    "Revenue/Profit Sharing",
+    "Price Restrictions",
+    "Minimum Commitment",
+    "Volume Restriction",
+    "Ip Ownership Assignment",
+    "Joint Ip Ownership",
+    "License Grant",
+    "Non-Transferable License",
+    "Affiliate License-Licensor",
+    "Affiliate License-Licensee",
+    "Unlimited/All-You-Can-Eat-License",
+    "Irrevocable Or Perpetual License",
+    "Source Code Escrow",
+    "Post-Termination Services",
+    "Audit Rights",
+    "Uncapped Liability",
+    "Cap On Liability",
+    "Liquidated Damages",
+    "Warranty Duration",
+    "Insurance",
+    "Covenant Not To Sue",
+    "Third Party Beneficiary",
 ]
 CATEGORY_TO_IDX = {name: i for i, name in enumerate(CUAD_CATEGORIES)}
 
@@ -88,22 +118,22 @@ def group_by_contract(rows: List[dict]) -> Dict[str, dict]:
             answers = row.get("answers", {})
             texts = answers.get("text", [])
             starts = answers.get("answer_start", [])
-            for text, start in zip(texts, starts):
+            for text, start in zip(texts, starts, strict=False):
                 if text and start is not None and start >= 0:
-                    contracts[contract_id]["spans"].append({
-                        "category": category,
-                        "start": int(start),
-                        "end": int(start) + len(text),
-                        "text": text,
-                    })
+                    contracts[contract_id]["spans"].append(
+                        {
+                            "category": category,
+                            "start": int(start),
+                            "end": int(start) + len(text),
+                            "text": text,
+                        }
+                    )
 
     logger.info(f"Grouped into {len(contracts)} contracts")
     return contracts
 
 
-def make_window_around_span(
-    context: str, span: dict, window_size: int
-) -> Tuple[int, int, str]:
+def make_window_around_span(context: str, span: dict, window_size: int) -> Tuple[int, int, str]:
     """Center a window of `window_size` chars around a span; clamp to context bounds."""
     span_center = (span["start"] + span["end"]) // 2
     half = window_size // 2
@@ -130,9 +160,7 @@ def make_label_vector(categories: Set[str]) -> List[int]:
     return vec
 
 
-def generate_positive_examples(
-    contract: dict, window_size: int
-) -> List[dict]:
+def generate_positive_examples(contract: dict, window_size: int) -> List[dict]:
     """For each answer span, generate a labeled window centered on it."""
     context = contract["context"]
     spans = contract["spans"]
@@ -141,10 +169,12 @@ def generate_positive_examples(
     for span in spans:
         win_start, win_end, text = make_window_around_span(context, span, window_size)
         overlapping_cats = spans_overlapping_window(spans, win_start, win_end)
-        examples.append({
-            "text": text,
-            "labels": make_label_vector(set(overlapping_cats)),
-        })
+        examples.append(
+            {
+                "text": text,
+                "labels": make_label_vector(set(overlapping_cats)),
+            }
+        )
 
     return examples
 
@@ -173,10 +203,12 @@ def generate_negative_examples(
         if overlaps:
             continue
 
-        examples.append({
-            "text": context[win_start:win_end],
-            "labels": [0] * len(CUAD_CATEGORIES),
-        })
+        examples.append(
+            {
+                "text": context[win_start:win_end],
+                "labels": [0] * len(CUAD_CATEGORIES),
+            }
+        )
 
     return examples
 
@@ -227,7 +259,7 @@ def write_jsonl(path: Path, examples: List[dict]) -> None:
 
 def label_distribution_report(examples: List[dict]) -> Dict[str, int]:
     """Count examples per category for sanity check."""
-    counts = {cat: 0 for cat in CUAD_CATEGORIES}
+    counts = dict.fromkeys(CUAD_CATEGORIES, 0)
     for ex in examples:
         for i, v in enumerate(ex["labels"]):
             if v == 1:
@@ -238,19 +270,27 @@ def label_distribution_report(examples: List[dict]) -> Dict[str, int]:
 def main():
     parser = argparse.ArgumentParser(description="Convert CUAD SQuAD to multi-label format")
     parser.add_argument(
-        "--input", type=str, default="data/processed/cuad_squad.jsonl",
+        "--input",
+        type=str,
+        default="data/processed/cuad_squad.jsonl",
         help="Path to SQuAD-formatted CUAD JSONL",
     )
     parser.add_argument(
-        "--output", type=str, default="data/processed/cuad_multilabel.jsonl",
+        "--output",
+        type=str,
+        default="data/processed/cuad_multilabel.jsonl",
         help="Output multi-label JSONL path",
     )
     parser.add_argument(
-        "--window-size", type=int, default=2000,
+        "--window-size",
+        type=int,
+        default=2000,
         help="Character window size (DeBERTa tokenizer chars ~ 4 per token, so 2000 ~ 500 tokens)",
     )
     parser.add_argument(
-        "--max-negatives-per-contract", type=int, default=10,
+        "--max-negatives-per-contract",
+        type=int,
+        default=10,
         help="Max negative (no-clause) windows sampled per contract",
     )
     args = parser.parse_args()
