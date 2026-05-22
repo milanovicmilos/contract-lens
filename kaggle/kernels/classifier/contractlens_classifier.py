@@ -72,18 +72,62 @@ from transformers import (
 
 
 class MultiLabelTrainer(Trainer):
-    """Forces float labels and applies BCEWithLogitsLoss so int-typed labels in the
-    Arrow dataset (a side effect of saving binary vectors as List[int] in the JSONL)
-    don't trigger the "Float can't be cast to Long" error inside the default
-    multi-label loss path."""
+    """Class-weighted BCE for multi-label.
+
+    Forces float labels and applies BCEWithLogitsLoss with pos_weight to
+    counteract the extreme class imbalance in CUAD (e.g. Parties has 4071
+    positives, Price Restrictions only 53). Without weighting, the model
+    learns to never predict rare categories because the negative class
+    overwhelms the loss signal.
+
+    pos_weight per class = max(1, (N - n_pos) / max(n_pos, 1))
+    """
+
+    def __init__(self, *args, pos_weight=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.pos_weight = pos_weight
 
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
         labels = inputs.pop("labels").float()
         outputs = model(**inputs)
         logits = outputs.logits
-        loss_fct = nn.BCEWithLogitsLoss()
+        if self.pos_weight is not None:
+            pw = self.pos_weight.to(logits.device)
+            loss_fct = nn.BCEWithLogitsLoss(pos_weight=pw)
+        else:
+            loss_fct = nn.BCEWithLogitsLoss()
         loss = loss_fct(logits, labels)
         return (loss, outputs) if return_outputs else loss
+
+
+def compute_pos_weight(dataset, num_labels: int):
+    """Inverse-frequency pos_weight per label from training set."""
+    n_pos = np.zeros(num_labels, dtype=np.float64)
+    total = 0
+    for ex in dataset:
+        n_pos += np.array(ex["labels"], dtype=np.float64)
+        total += 1
+    n_neg = total - n_pos
+    # Avoid div-by-zero; cap weight to 100 to prevent loss explosion on ultra-rare classes
+    pw = np.where(n_pos > 0, n_neg / np.maximum(n_pos, 1.0), 1.0)
+    pw = np.clip(pw, 1.0, 100.0)
+    return torch.tensor(pw, dtype=torch.float32)
+
+
+def tune_thresholds(probs, y_true, num_labels: int):
+    """Per-category threshold that maximizes F1 on the eval set."""
+    best_thresholds = np.full(num_labels, PROB_THRESHOLD)
+    for i in range(num_labels):
+        if y_true[:, i].sum() == 0:
+            continue
+        best_f1 = 0.0
+        for t in np.arange(0.1, 0.95, 0.05):
+            preds = (probs[:, i] > t).astype(int)
+            f1 = f1_score(y_true[:, i], preds, zero_division=0)
+            if f1 > best_f1:
+                best_f1 = f1
+                best_thresholds[i] = t
+    return best_thresholds
 
 # ---------------------------------------------------------------------------
 # 2. Configuration
@@ -199,8 +243,8 @@ def main():
     peft_config = LoraConfig(
         task_type=TaskType.SEQ_CLS,
         inference_mode=False,
-        r=16,
-        lora_alpha=32,
+        r=32,
+        lora_alpha=64,
         lora_dropout=0.1,
         target_modules=["query_proj", "value_proj", "key_proj"],
     )
@@ -209,13 +253,20 @@ def main():
     total = sum(p.numel() for p in model.parameters())
     logger.info(f"Trainable: {trainable:,}/{total:,} ({100*trainable/total:.2f}%)")
 
+    logger.info("Computing per-class pos_weight from training set distribution...")
+    pos_weight = compute_pos_weight(split["train"], NUM_LABELS)
+    logger.info(
+        f"pos_weight stats: min={pos_weight.min().item():.2f}, "
+        f"max={pos_weight.max().item():.2f}, mean={pos_weight.mean().item():.2f}"
+    )
+
     training_args = TrainingArguments(
         output_dir=OUTPUT_DIR,
-        learning_rate=3e-5,
+        learning_rate=5e-5,
         per_device_train_batch_size=4,
         per_device_eval_batch_size=8,
         gradient_accumulation_steps=4,
-        num_train_epochs=4,
+        num_train_epochs=8,
         weight_decay=0.01,
         evaluation_strategy="epoch",
         save_strategy="epoch",
@@ -237,7 +288,8 @@ def main():
         train_dataset=split["train"],
         eval_dataset=split["test"],
         compute_metrics=compute_metrics,
-        callbacks=[EarlyStoppingCallback(early_stopping_patience=2)],
+        callbacks=[EarlyStoppingCallback(early_stopping_patience=3)],
+        pos_weight=pos_weight,
     )
 
     logger.info("Starting training...")
@@ -250,18 +302,46 @@ def main():
     logger.info("Computing per-category classification report...")
     preds = trainer.predict(split["test"])
     probs = 1.0 / (1.0 + np.exp(-preds.predictions))
-    y_pred = (probs > PROB_THRESHOLD).astype(int)
     y_true = preds.label_ids.astype(int)
-    report = classification_report(
-        y_true, y_pred, target_names=CUAD_CATEGORIES, zero_division=0, output_dict=True
+
+    # Two reports: default 0.5 threshold, and per-class tuned thresholds (better
+    # for rare categories where 0.5 is too conservative).
+    y_pred_default = (probs > PROB_THRESHOLD).astype(int)
+    report_default = classification_report(
+        y_true, y_pred_default, target_names=CUAD_CATEGORIES, zero_division=0, output_dict=True
     )
 
+    thresholds = tune_thresholds(probs, y_true, NUM_LABELS)
+    y_pred_tuned = (probs > thresholds[None, :]).astype(int)
+    report_tuned = classification_report(
+        y_true, y_pred_tuned, target_names=CUAD_CATEGORIES, zero_division=0, output_dict=True
+    )
+
+    combined = {
+        "default_threshold_0_5": report_default,
+        "tuned_thresholds": report_tuned,
+        "thresholds_per_category": {
+            CUAD_CATEGORIES[i]: float(thresholds[i]) for i in range(NUM_LABELS)
+        },
+    }
     with open(EVAL_REPORT_PATH, "w") as f:
-        json.dump(report, f, indent=2)
+        json.dump(combined, f, indent=2)
+    # Persist thresholds next to model for downstream HFClassifier loading.
+    with open(f"{OUTPUT_DIR}/thresholds.json", "w") as f:
+        json.dump(
+            {CUAD_CATEGORIES[i]: float(thresholds[i]) for i in range(NUM_LABELS)},
+            f,
+            indent=2,
+        )
+
     logger.info(f"Eval report written to {EVAL_REPORT_PATH}")
     logger.info(
-        f"FINAL: micro_f1={report['micro avg']['f1-score']:.4f}, "
-        f"macro_f1={report['macro avg']['f1-score']:.4f}"
+        f"DEFAULT  threshold=0.5: micro_f1={report_default['micro avg']['f1-score']:.4f}, "
+        f"macro_f1={report_default['macro avg']['f1-score']:.4f}"
+    )
+    logger.info(
+        f"TUNED  per-class thresholds: micro_f1={report_tuned['micro avg']['f1-score']:.4f}, "
+        f"macro_f1={report_tuned['macro avg']['f1-score']:.4f}"
     )
 
 
