@@ -295,9 +295,21 @@ def main():
     logger.info("Starting training...")
     trainer.train()
 
-    logger.info(f"Saving model to {OUTPUT_DIR}")
+    logger.info(f"Saving LoRA adapter to {OUTPUT_DIR}")
     trainer.save_model(OUTPUT_DIR)
     tokenizer.save_pretrained(OUTPUT_DIR)
+
+    # Also save a full merged model so downstream inference does NOT depend on
+    # re-initializing the pooler.dense (which is randomly init'd by HF
+    # SequenceClassification and is NOT covered by LoRA modules_to_save).
+    # Without this, reloading the adapter via PeftModel gives ~0.5 sigmoid
+    # scores everywhere because the pooler outputs are unrelated to what the
+    # classifier head was trained against.
+    merged_dir = f"{OUTPUT_DIR}_merged"
+    logger.info(f"Merging LoRA adapter and saving full model to {merged_dir}")
+    merged_model = trainer.model.merge_and_unload()
+    merged_model.save_pretrained(merged_dir)
+    tokenizer.save_pretrained(merged_dir)
 
     logger.info("Computing per-category classification report...")
     preds = trainer.predict(split["test"])

@@ -109,14 +109,43 @@ def _load_peft_model(adapter_path: str):
             f"adapter_config.json at {adapter_cfg_path} missing base_model_name_or_path."
         )
 
-    logger.info(f"Loading PEFT adapter '{adapter_path}' on top of base '{base_model_name}'")
-    config = AutoConfig.from_pretrained(adapter_path)
-    base = AutoModelForSequenceClassification.from_pretrained(base_model_name, config=config)
-    model = PeftModel.from_pretrained(base, adapter_path)
+    # The adapter directory ships only LoRA tensors + tokenizer. To rebuild the
+    # PEFT-wrapped model correctly we must size the base classifier head to match
+    # what the adapter's modules_to_save expect; otherwise PEFT loads the LoRA
+    # tensors but the classifier head stays at its random init and every label
+    # collapses to sigmoid(0)~=0.5.
+    num_labels: int = 0
     try:
-        model = model.merge_and_unload()
+        from safetensors import safe_open
+
+        with safe_open(Path(adapter_path) / "adapter_model.safetensors", framework="pt") as st:
+            for key in st.keys():
+                if key.endswith("classifier.weight") or key.endswith("score.weight"):
+                    num_labels = st.get_slice(key).get_shape()[0]
+                    break
     except Exception as exc:
-        logger.warning(f"merge_and_unload failed ({exc}); using adapter wrapper directly.")
+        logger.debug(f"Could not infer num_labels from safetensors: {exc}")
+
+    if not num_labels:
+        num_labels = len(CUAD_CATEGORIES)
+
+    logger.info(
+        f"Loading PEFT adapter '{adapter_path}' on top of base '{base_model_name}' "
+        f"with num_labels={num_labels}"
+    )
+    base = AutoModelForSequenceClassification.from_pretrained(
+        base_model_name,
+        num_labels=int(num_labels),
+        problem_type="multi_label_classification",
+    )
+    model = PeftModel.from_pretrained(base, adapter_path)
+    # Keep the PEFT wrapper alive (no merge_and_unload) so modules_to_save weights
+    # (classifier head) keep their saved values during forward passes. Cast the
+    # whole model to float32: the Kaggle fp16 trainer saved modules_to_save in
+    # half precision, which crashes CPU inference (mat1=fp32 vs mat2=fp16). On
+    # GPU we can re-cast back to fp16 to recover speed.
+    model = model.float()
+    model.eval()
     return model
 
 
