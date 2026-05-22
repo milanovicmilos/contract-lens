@@ -314,8 +314,11 @@ def main():
         remove_columns=val_raw.column_names,
     )
 
-    # use_safetensors=True avoids torch.load CVE path that fails under torch 2.4.
-    model = AutoModelForQuestionAnswering.from_pretrained(MODEL_NAME, use_safetensors=True)
+    # transformers 4.46 (pinned above) does not enforce the torch>=2.6 CVE check,
+    # so loading the upstream pytorch_model.bin is safe even on torch 2.4. We avoid
+    # use_safetensors=True because HF's auto-conversion service has been failing
+    # intermittently with KeyError on 'event_id' for models without safetensors.
+    model = AutoModelForQuestionAnswering.from_pretrained(MODEL_NAME)
 
     training_args = TrainingArguments(
         output_dir=OUTPUT_DIR,

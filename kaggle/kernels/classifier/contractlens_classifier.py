@@ -186,13 +186,14 @@ def main():
     logger.info(f"Train: {len(split['train'])}, Val: {len(split['test'])}")
 
     logger.info("Loading base model + applying LoRA")
-    # use_safetensors=True avoids the torch.load CVE-2025-32434 path that fails
-    # under torch 2.4 (pinned for sm_60 GPU support).
+    # transformers 4.46 (pinned above) does not enforce the torch>=2.6 CVE check,
+    # so the upstream pytorch_model.bin loads safely on torch 2.4. We avoid
+    # use_safetensors=True because HF's auto-conversion service has been
+    # intermittently failing with KeyError on 'event_id'.
     model = AutoModelForSequenceClassification.from_pretrained(
         MODEL_NAME,
         num_labels=NUM_LABELS,
         problem_type="multi_label_classification",
-        use_safetensors=True,
     )
 
     peft_config = LoraConfig(
