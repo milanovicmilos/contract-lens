@@ -58,6 +58,7 @@ _ensure_deps()
 
 import numpy as np
 import torch
+import torch.nn as nn
 from datasets import load_dataset
 from peft import LoraConfig, TaskType, get_peft_model
 from sklearn.metrics import classification_report, f1_score, precision_score, recall_score
@@ -68,6 +69,21 @@ from transformers import (
     Trainer,
     TrainingArguments,
 )
+
+
+class MultiLabelTrainer(Trainer):
+    """Forces float labels and applies BCEWithLogitsLoss so int-typed labels in the
+    Arrow dataset (a side effect of saving binary vectors as List[int] in the JSONL)
+    don't trigger the "Float can't be cast to Long" error inside the default
+    multi-label loss path."""
+
+    def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
+        labels = inputs.pop("labels").float()
+        outputs = model(**inputs)
+        logits = outputs.logits
+        loss_fct = nn.BCEWithLogitsLoss()
+        loss = loss_fct(logits, labels)
+        return (loss, outputs) if return_outputs else loss
 
 # ---------------------------------------------------------------------------
 # 2. Configuration
@@ -214,7 +230,7 @@ def main():
         lr_scheduler_type="cosine",
     )
 
-    trainer = Trainer(
+    trainer = MultiLabelTrainer(
         model=model,
         args=training_args,
         train_dataset=split["train"],
