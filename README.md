@@ -124,11 +124,10 @@ docker run -p 8000:8000 -e OPENAI_API_KEY=<key> contract-lens:latest
 
 ## 📚 Documentation
 
-- [Architecture & Design](docs/architecture.md)
-- [Data Pipeline](docs/data-pipeline.md)
-- [Training on Kaggle](kaggle/README.md)
-- [API Endpoints](docs/api.md)
-- [Deployment Guide](docs/deployment.md)
+- [Architecture & Mermaid diagrams](docs/arch.md)
+- [Production readiness tracker](TODO.md)
+- [Standalone Kaggle classifier kernel](kaggle/kernels/classifier/contractlens_classifier.py)
+- [Standalone Kaggle extractor kernel](kaggle/kernels/extractor/contractlens_extractor.py)
 
 ## 🧪 Testing
 
@@ -161,13 +160,47 @@ See [CUAD_v1/CUAD_v1_README.txt](CUAD_v1/CUAD_v1_README.txt) for details.
 - **Time**: Minutes for local testing
 
 ### Kaggle Training
-- **Model**: microsoft/deberta-v3-large (production)
-- **Hardware**: NVIDIA T4 x2
-- **Technique**: LoRA/QLoRA fine-tuning
+- **Model**: microsoft/deberta-v3-base with LoRA r=16 (production)
+- **Hardware**: Kaggle T4 x2 (sm_75) or P100 (sm_60) — both supported via torch 2.4 + transformers 4.46 pin
+- **Technique**: LoRA fine-tuning with sklearn micro/macro F1, EarlyStopping
 - **Target F1**: >0.85 on CUAD test set
-- **Time**: 2-4 weeks
+- **Time**: ~30-60 min on T4
 
-See [kaggle/train_lora.py](kaggle/train_lora.py) for training script.
+End-to-end workflow:
+```bash
+# 1. Prepare multi-label dataset
+python scripts/prepare_multilabel_dataset.py
+
+# 2. Push datasets to Kaggle (one-time)
+cd kaggle/datasets/cuad-multilabel && kaggle datasets create -p . --dir-mode zip
+cd ../cuad-squad && kaggle datasets create -p . --dir-mode zip
+
+# 3. Push kernels (one per training run)
+cd kaggle/kernels/classifier && kaggle kernels push -p .
+cd ../extractor && kaggle kernels push -p .
+
+# 4. Check status until COMPLETE
+kaggle kernels status milomilanovi/contractlens-classifier-training
+
+# 5. Pull trained model artifacts
+python scripts/pull_kaggle_models.py
+
+# 6. Point API at fine-tuned model
+export CLASSIFIER_MODEL=models/deberta-cuad-classifier
+uvicorn src.api.main:app --reload
+```
+
+### RAG Seeding
+```bash
+# Populate ChromaDB with GDPR / EU AI Act snippets
+python scripts/seed_regulations.py
+```
+
+### Evaluation
+```bash
+# Run full RAGAS-style eval with LLM-as-judge (needs OPENAI_API_KEY)
+python -m src.evaluation.ragas_eval --max-contracts 25 --output docs/evaluation_report.json
+```
 
 ## 🔌 OpenAI Integration
 
