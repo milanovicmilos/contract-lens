@@ -40,6 +40,12 @@ def _ensure_deps():
         "--index-url",
         "https://download.pytorch.org/whl/cu121",
     )
+    _pip(
+        "transformers==4.46.0",
+        "tokenizers>=0.20,<0.21",
+        "accelerate>=0.34,<1.0",
+        "datasets>=3.0,<3.5",
+    )
 
 
 _ensure_deps()
@@ -58,7 +64,7 @@ from transformers import (  # noqa: E402
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "microsoft/deberta-v3-large"
+MODEL_NAME = "microsoft/deberta-v3-base"  # safetensors available on main; safer with torch 2.4
 # Kaggle mounts private CLI-attached datasets under /kaggle/input/datasets/<owner>/<slug>/.
 DATASET_PATH = "/kaggle/input/datasets/milomilanovi/contractlens-cuad-squad/cuad_squad.jsonl"
 OUTPUT_DIR = "/kaggle/working/deberta-cuad-extractor"
@@ -308,11 +314,12 @@ def main():
         remove_columns=val_raw.column_names,
     )
 
-    model = AutoModelForQuestionAnswering.from_pretrained(MODEL_NAME)
+    # use_safetensors=True avoids torch.load CVE path that fails under torch 2.4.
+    model = AutoModelForQuestionAnswering.from_pretrained(MODEL_NAME, use_safetensors=True)
 
     training_args = TrainingArguments(
         output_dir=OUTPUT_DIR,
-        eval_strategy="epoch",
+        evaluation_strategy="epoch",
         save_strategy="epoch",
         save_total_limit=2,
         learning_rate=3e-5,

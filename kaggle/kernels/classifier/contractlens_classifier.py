@@ -33,7 +33,9 @@ def _ensure_deps():
     def _pip(*args):
         subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", *args])
 
-    # Reinstall torch with broad GPU compatibility (P100 sm_60 + T4 sm_75)
+    # Reinstall torch with broad GPU compatibility (P100 sm_60 + T4 sm_75).
+    # Pin transformers to a version that doesn't enforce torch>=2.6 for .bin loading
+    # (CVE check that was added in transformers 5.x but we still need torch 2.4 for sm_60).
     _pip(
         "--upgrade",
         "--force-reinstall",
@@ -42,7 +44,14 @@ def _ensure_deps():
         "--index-url",
         "https://download.pytorch.org/whl/cu121",
     )
-    _pip("peft>=0.10.0", "scikit-learn>=1.3.0")
+    _pip(
+        "transformers==4.46.0",
+        "tokenizers>=0.20,<0.21",
+        "peft==0.13.0",
+        "accelerate>=0.34,<1.0",
+        "scikit-learn>=1.3.0",
+        "datasets>=3.0,<3.5",
+    )
 
 
 _ensure_deps()
@@ -66,7 +75,7 @@ from transformers import (
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "microsoft/deberta-v3-large"
+MODEL_NAME = "microsoft/deberta-v3-base"  # safetensors available on main; safer with torch 2.4
 # Kaggle mounts private CLI-attached datasets under /kaggle/input/datasets/<owner>/<slug>/.
 # The discovery fallback in main() handles other mount conventions transparently.
 DATASET_PATH = "/kaggle/input/datasets/milomilanovi/contractlens-cuad-multilabel/cuad_multilabel.jsonl"
@@ -161,8 +170,13 @@ def main():
     logger.info(f"Train: {len(split['train'])}, Val: {len(split['test'])}")
 
     logger.info("Loading base model + applying LoRA")
+    # use_safetensors=True avoids the torch.load CVE-2025-32434 path that fails
+    # under torch 2.4 (pinned for sm_60 GPU support).
     model = AutoModelForSequenceClassification.from_pretrained(
-        MODEL_NAME, num_labels=NUM_LABELS, problem_type="multi_label_classification"
+        MODEL_NAME,
+        num_labels=NUM_LABELS,
+        problem_type="multi_label_classification",
+        use_safetensors=True,
     )
 
     peft_config = LoraConfig(
@@ -186,7 +200,7 @@ def main():
         gradient_accumulation_steps=4,
         num_train_epochs=4,
         weight_decay=0.01,
-        eval_strategy="epoch",
+        evaluation_strategy="epoch",
         save_strategy="epoch",
         save_total_limit=2,
         load_best_model_at_end=True,
