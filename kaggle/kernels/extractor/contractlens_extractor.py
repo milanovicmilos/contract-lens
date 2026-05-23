@@ -320,15 +320,22 @@ def main():
     # intermittently with KeyError on 'event_id' for models without safetensors.
     model = AutoModelForQuestionAnswering.from_pretrained(MODEL_NAME)
 
+    # The previous run hit the Kaggle 9h GPU limit after 10h on a P100 doing
+    # 2 epochs over the full ~18k training features. Switch to max_steps so we
+    # always have a saved checkpoint regardless of GPU type, and trim batch
+    # size + sequence length so a P100 can finish in <6h.
     training_args = TrainingArguments(
         output_dir=OUTPUT_DIR,
-        evaluation_strategy="epoch",
-        save_strategy="epoch",
+        evaluation_strategy="steps",
+        eval_steps=1000,
+        save_strategy="steps",
+        save_steps=1000,
         save_total_limit=2,
         learning_rate=3e-5,
-        per_device_train_batch_size=8,
-        per_device_eval_batch_size=16,
-        num_train_epochs=2,
+        per_device_train_batch_size=4,
+        per_device_eval_batch_size=8,
+        gradient_accumulation_steps=2,
+        max_steps=4000,  # ~one full epoch worth of updates regardless of GPU speed
         weight_decay=0.01,
         warmup_ratio=0.1,
         fp16=True,
