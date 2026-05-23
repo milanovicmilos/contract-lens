@@ -62,8 +62,32 @@ operationally useful subset for the API demo and risk dashboard.
 
 ## Extractive QA (DeBERTa-v3-base, full fine-tune)
 
-In progress at the time of writing — see `models/deberta-cuad-extractor/`
-and `docs/extractor_eval.json` once the kernel completes.
+### Iterations
+
+| Run | Setup | Result |
+|-----|-------|--------|
+| v6 | 2 epochs full pass, batch 8 | Killed by Kaggle 9h session limit at ~10h on P100, no usable checkpoint |
+| v7 | max_steps=4000, batch 4, grad_accum 2 | Trained successfully (train_loss=0.47 at 4000 steps, ~0.05 epoch). Post-processing of eval predictions failed (CLS-index off-by-one in our notebook), but the model weights were saved before the failure |
+
+### Status
+
+The v7 model (`models/deberta-cuad-extractor/`, 700 MB safetensors) loads cleanly
+and runs inference, but with only 5% of one epoch of CUAD training it is severely
+undertrained — every category prompt collapses to a similar short prefix span.
+
+Mitigation in production deployment: leave the extractor disabled (set
+`EXTRACTOR_MODEL=""` in env) so the orchestrator falls back to using the full
+chunk as the span. The classifier still provides per-category risk scoring,
+and the `RiskScore.span_start_offset` is left None to signal "span not localized."
+
+### Path to a usable extractor (future work)
+
+- Bump `max_steps` to 16000-32000 (~0.4 epoch), split across two ~5h Kaggle
+  sessions using `--resume_from_checkpoint`.
+- Or initialize from `deepset/deberta-v3-base-squad2` (already SQuAD-tuned)
+  and fine-tune for just 4000 steps on CUAD.
+- Either approach should yield exact-match / token F1 numbers comparable
+  to published CUAD baselines (~0.40-0.50).
 
 ## End-to-End Demo
 
