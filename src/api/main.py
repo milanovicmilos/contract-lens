@@ -15,9 +15,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
+from src.api.middleware import BodySizeLimitMiddleware, RequestIDMiddleware
+from src.api.rate_limit import limiter
+from src.api.security import require_api_key, warn_if_insecure
 from src.application.generate_compliance_report import GenerateComplianceReport
 from src.application.interfaces.illm_provider import ILLMProvider
 from src.application.orchestration.orchestrator import ContractOrchestrator
@@ -44,6 +50,9 @@ CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "legal_regulations")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 DISABLE_LLM = _is_truthy(os.getenv("DISABLE_LLM"))
 REPORTS_DIR = Path(os.getenv("REPORTS_DIR", "reports"))
+# CORS allowlist — comma-separated origins, empty disables CORS entirely
+# (most restrictive default). Use ["*"] in dev only via ALLOWED_ORIGINS="*".
+ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
 
 
 orchestrator: Optional[ContractOrchestrator] = None
@@ -105,6 +114,7 @@ def _build_orchestrator() -> ContractOrchestrator:
 async def lifespan(_app: FastAPI):
     """FastAPI lifespan: build orchestrator at startup unless TESTING=True."""
     global orchestrator, report_generator
+    warn_if_insecure()
     if _is_truthy(os.getenv("TESTING")):
         logger.info("TESTING mode — skipping orchestrator initialization.")
         yield
@@ -128,6 +138,36 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Rate limiter — must be attached before the SlowAPI middleware below.
+# Endpoint-specific limits use @limiter.limit("..."); the limiter also
+# applies any RATE_LIMIT_DEFAULTS env value as a global ceiling.
+app.state.limiter = limiter
+
+
+def _rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    """Return 429 JSON instead of slowapi's default plain-text 429."""
+    from starlette.responses import JSONResponse
+
+    detail = f"Rate limit exceeded: {exc.detail}"
+    return JSONResponse({"detail": detail}, status_code=429)
+
+
+app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
+
+# Middleware order matters: outermost runs first on the request and last
+# on the response. Request ID -> body size -> CORS -> SlowAPI -> route.
+app.add_middleware(SlowAPIMiddleware)
+if ALLOWED_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=ALLOWED_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["GET", "POST"],
+        allow_headers=["X-API-Key", "Content-Type", "X-Request-ID"],
+    )
+app.add_middleware(BodySizeLimitMiddleware)
+app.add_middleware(RequestIDMiddleware)
 
 
 # ---------------------------------------------------------------------------
@@ -175,15 +215,19 @@ def get_report_generator() -> GenerateComplianceReport:
 # Endpoints
 # ---------------------------------------------------------------------------
 @app.post("/api/v1/analyze", response_model=List[RiskScoreResponse])
+@limiter.limit(os.getenv("RATE_LIMIT_ANALYZE", "60/minute"))
 async def analyze_contract(
-    request: AnalyzeRequest,
+    request: Request,
+    response: Response,
+    body: AnalyzeRequest,
     orch: ContractOrchestrator = Depends(get_orchestrator),
+    _key: str = Depends(require_api_key),
 ):
     """Analyze a contract text block; return identified risk scores."""
-    if not request.text or not request.text.strip():
+    if not body.text or not body.text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
-    risks = orch.analyze(request.text, source_doc=request.source_doc)
+    risks = orch.analyze(body.text, source_doc=body.source_doc)
 
     return [
         RiskScoreResponse(
@@ -202,31 +246,35 @@ async def analyze_contract(
 
 
 @app.post("/api/v1/report")
+@limiter.limit(os.getenv("RATE_LIMIT_REPORT", "10/minute"))
 async def generate_report(
-    request: ReportRequest,
+    request: Request,
+    response: Response,
+    body: ReportRequest,
     orch: ContractOrchestrator = Depends(get_orchestrator),
     reporter: GenerateComplianceReport = Depends(get_report_generator),
+    _key: str = Depends(require_api_key),
 ):
     """Analyze a contract text block and emit a compliance report (JSON or PDF)."""
-    if not request.text or not request.text.strip():
+    if not body.text or not body.text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
-    if request.format not in {"json", "pdf"}:
+    if body.format not in {"json", "pdf"}:
         raise HTTPException(status_code=400, detail="format must be 'json' or 'pdf'")
 
-    risks = orch.analyze(request.text, source_doc=request.source_doc)
+    risks = orch.analyze(body.text, source_doc=body.source_doc)
     contract = Contract(
-        raw_text=request.text,
+        raw_text=body.text,
         metadata=ContractMetadata(
-            source_path=request.source_doc or "inline",
+            source_path=body.source_doc or "inline",
             file_format="txt",
-            char_count=len(request.text),
+            char_count=len(body.text),
             analyzed_at=datetime.now(timezone.utc),
         ),
     )
     for r in risks:
         contract.add_risk(r)
 
-    if request.format == "json":
+    if body.format == "json":
         path = reporter.to_json(contract)
     else:
         path = reporter.to_pdf(contract)

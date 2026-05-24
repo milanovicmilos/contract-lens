@@ -42,6 +42,7 @@ RUN echo "torch>=2.0.0" > /tmp/runtime-reqs.txt && \
     echo "transformers>=4.36.0" >> /tmp/runtime-reqs.txt && \
     echo "fastapi>=0.104.0" >> /tmp/runtime-reqs.txt && \
     echo "uvicorn>=0.24.0" >> /tmp/runtime-reqs.txt && \
+    echo "slowapi>=0.1.9" >> /tmp/runtime-reqs.txt && \
     echo "pydantic>=2.0.0" >> /tmp/runtime-reqs.txt && \
     echo "chromadb>=0.4.0" >> /tmp/runtime-reqs.txt && \
     echo "openai>=1.3.0" >> /tmp/runtime-reqs.txt && \

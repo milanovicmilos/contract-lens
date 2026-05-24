@@ -111,6 +111,8 @@ python scripts/demo_e2e.py "CUAD_v1/full_contract_txt/<some_contract>.txt"
 ```bash
 export CLASSIFIER_MODEL=models/deberta-cuad-classifier
 export CHROMA_DIR=./chroma_db
+# Generate a real API key once and set it in your env:
+export CONTRACTLENS_API_KEYS=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
 uvicorn src.api.main:app --reload
 ```
 
@@ -118,13 +120,22 @@ Endpoints:
 
 | Method | Path | Body | Purpose |
 |--------|------|------|---------|
-| POST | `/api/v1/analyze` | `{text, source_doc?}` | List of `RiskScoreResponse` |
-| POST | `/api/v1/report` | `{text, source_doc?, format: "json"\|"pdf"}` | Compliance report path + summary |
-| GET | `/health` | — | Readiness probe (orchestrator_ready) |
+| POST | `/api/v1/analyze` | `{text, source_doc?}` | List of `RiskScoreResponse` (auth required) |
+| POST | `/api/v1/report` | `{text, source_doc?, format: "json"\|"pdf"}` | Compliance report path + summary (auth required) |
+| GET | `/health` | — | Readiness probe (no auth) |
+
+All `/api/v1/*` routes require an `X-API-Key: <value>` header matching one
+of `CONTRACTLENS_API_KEYS` (comma-separated). For local dev / CI you may
+set `API_AUTH_DISABLED=1` — the server logs a loud WARNING when this is on.
 
 The API starts even without `OPENAI_API_KEY` (the Legal Consultant just falls
 back to rule-based notes); set `DISABLE_LLM=1` to suppress the cloud call
 explicitly.
+
+Other security knobs (see [`.env.example`](.env.example)): `RATE_LIMIT_ANALYZE`
+(default `60/minute`), `RATE_LIMIT_REPORT` (default `10/minute`),
+`MAX_REQUEST_BODY_MB` (default `5`), `ALLOWED_ORIGINS` (CORS allowlist;
+empty = no CORS).
 
 ## Architecture
 
