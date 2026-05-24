@@ -1,0 +1,10 @@
+{
+  "title": "ContractLens CUAD SQuAD",
+  "id": "milomilanovi/contractlens-cuad-squad",
+  "licenses": [
+    {
+      "name": "CC-BY-4.0"
+    }
+  ],
+  "description": "CUAD v1 dataset in SQuAD-format JSONL for extractive QA training. Each row is {id, contract_id, context, question, answers, is_impossible}. Used to train DeBERTa-v3-large for legal clause span extraction."
+}

@@ -1,8 +1,9 @@
 from unittest.mock import MagicMock
 
-from src.application.interfaces.irisk_analyzer import RiskScore
+import pytest
 
 from src.application.evaluation.evaluator import LLMEvaluator
+from src.application.interfaces.irisk_analyzer import RiskScore
 
 
 def test_evaluate_faithfulness_with_mock():
@@ -30,7 +31,7 @@ def test_evaluate_faithfulness_with_mock():
     assert result.reasoning == "Reasonable deduction."
 
 
-def test_evaluate_faithfulness_fallback():
+def test_evaluate_faithfulness_missing_client():
     evaluator = LLMEvaluator(llm_client=None)
     risk_score = RiskScore(
         category="Liability",
@@ -41,8 +42,7 @@ def test_evaluate_faithfulness_fallback():
         metadata={},
     )
 
-    result = evaluator.evaluate_faithfulness(risk_score, "Company liability is capped at 1000 USD.")
-
-    assert result.metric_name == "faithfulness"
-    assert result.score == 1.0
-    assert result.reasoning == "Fallback: perfectly faithful."
+    with pytest.raises(
+        ValueError, match="LLM client requires a valid instance for faithfulness evaluation."
+    ):
+        evaluator.evaluate_faithfulness(risk_score, "Company liability is capped at 1000 USD.")

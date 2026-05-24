@@ -1,0 +1,17 @@
+{
+  "id": "milomilanovi/contractlens-classifier-training",
+  "title": "ContractLens Classifier Training",
+  "code_file": "contractlens_classifier.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "dataset_sources": [
+    "milomilanovi/contractlens-cuad-multilabel"
+  ],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}

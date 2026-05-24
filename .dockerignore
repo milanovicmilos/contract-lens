@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+.git/
+.github/
+CUAD_v1/
+data/
+docker_db/
+chroma_db/
+*.pdf
+*.txt
+*.csv
+.pytest_cache/
+.coverage
+coverage.xml
