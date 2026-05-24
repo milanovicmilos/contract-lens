@@ -2,18 +2,21 @@
 ContractLens - Multi-label Classifier Training on Kaggle (v9).
 
 v9 changes vs v8 (see docs/RESULTS.md for v8 baseline):
-- Base model: microsoft/deberta-v3-large (439 M params) instead of -base (138 M).
-  v8 plateaued at micro F1 = 0.66, macro F1 = 0.53; the model was likely
-  capacity-limited on the rare CUAD categories (4 / 41 categories below F1
-  = 0.30).
-- LoRA: r=64, alpha=128 (was r=32, alpha=64) — wider adapter to match the
-  larger base.
+- LoRA r=64, alpha=128 (was r=32, alpha=64) — wider adapter for the same
+  -base backbone gives twice the rank to represent the 41-category boundary.
 - pos_weight cap: 50 (was 100). v8's cap=100 amplified noise on ultra-rare
   classes (Price Restrictions has 4 positives in eval split, so weight
   saturated and the loss gradient was dominated by those few examples).
-- Epochs: 12 with EarlyStopping patience=4 (was 8 / 3). The larger model
-  needs more passes to converge with LoRA.
-- LR: 3e-5 (was 5e-5). Lower base LR for the larger backbone.
+- Epochs: 12 with EarlyStopping patience=4 (was 8 / 3). More headroom for
+  the wider adapter to converge.
+- LR: 3e-5 (was 5e-5). Slightly lower for the wider adapter.
+
+History:
+- First v9 attempt also swapped backbone to microsoft/deberta-v3-large.
+  The kernel run produced a zero-byte log with an empty failureMessage,
+  consistent with an OOM or pre-Python crash. Reverted to the proven
+  -base backbone here; a separate experiment will retry -large with
+  gradient checkpointing and bf16 in a future revision.
 
 STANDALONE Kaggle script. No src/ imports. Push via:
 
@@ -36,6 +39,13 @@ import logging
 import os
 import sys
 
+# Unbuffered stdout so even an immediate crash flushes the banner to the
+# Kaggle log file. v9.0 produced a zero-byte log when -large OOMed at load
+# time, leaving us no diagnostic to act on; force-flush every print so the
+# next failure surfaces a real signal.
+print("[v9] kernel banner: starting", flush=True)
+sys.stdout.reconfigure(line_buffering=True)
+
 # ---------------------------------------------------------------------------
 # 1. Install dependencies + CUDA-compatible torch
 #    Kaggle may assign P100 (sm_60) or T4 (sm_75). Default torch on Kaggle
@@ -47,6 +57,7 @@ def _ensure_deps():
     def _pip(*args):
         subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", *args])
 
+    print("[v9] _ensure_deps: pinning torch 2.4.0 cu121 (sm_60 + sm_75)", flush=True)
     # Reinstall torch with broad GPU compatibility (P100 sm_60 + T4 sm_75).
     # Pin transformers to a version that doesn't enforce torch>=2.6 for .bin loading
     # (CVE check that was added in transformers 5.x but we still need torch 2.4 for sm_60).
@@ -58,6 +69,7 @@ def _ensure_deps():
         "--index-url",
         "https://download.pytorch.org/whl/cu121",
     )
+    print("[v9] _ensure_deps: torch ok, installing HF stack", flush=True)
     _pip(
         "transformers==4.46.0",
         "tokenizers>=0.20,<0.21",
@@ -66,6 +78,7 @@ def _ensure_deps():
         "scikit-learn>=1.3.0",
         "datasets>=3.0,<3.5",
     )
+    print("[v9] _ensure_deps: all deps installed", flush=True)
 
 
 _ensure_deps()
@@ -154,7 +167,7 @@ def tune_thresholds(probs, y_true, num_labels: int):
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "microsoft/deberta-v3-large"  # v9: 439M params (was -base / 138M)
+MODEL_NAME = "microsoft/deberta-v3-base"  # v9: reverted from -large after v9.0 OOM
 # Kaggle mounts private CLI-attached datasets under /kaggle/input/datasets/<owner>/<slug>/.
 # The discovery fallback in main() handles other mount conventions transparently.
 DATASET_PATH = "/kaggle/input/datasets/milomilanovi/contractlens-cuad-multilabel/cuad_multilabel.jsonl"
@@ -207,6 +220,8 @@ def tokenize_fn(batch, tokenizer):
 # 4. Main training pipeline
 # ---------------------------------------------------------------------------
 def main():
+    print(f"[v9] main(): GPU={torch.cuda.is_available()}, count={torch.cuda.device_count()}", flush=True)
+    print(f"[v9] main(): model={MODEL_NAME}, dataset={DATASET_PATH}", flush=True)
     logger.info(f"GPU available: {torch.cuda.is_available()}, count: {torch.cuda.device_count()}")
     logger.info(f"Loading tokenizer: {MODEL_NAME}")
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, use_fast=True)
@@ -284,20 +299,18 @@ def main():
         f"max={pos_weight.max().item():.2f}, mean={pos_weight.mean().item():.2f}"
     )
 
-    # v9 args:
-    # - lr=3e-5 (was 5e-5): lower for the larger backbone.
-    # - num_train_epochs=12 (was 8): more passes for the bigger model with LoRA.
+    # v9 args (post-revert to -base):
+    # - lr=3e-5 (was 5e-5): slightly lower for the wider adapter.
+    # - num_train_epochs=12 (was 8): more headroom for the wider adapter.
     # - patience=4 (was 3): allow longer plateau before stopping.
-    # - per_device_train_batch_size=2 (was 4): deberta-v3-large at len=512
-    #   needs ~12 GB of VRAM forward + activations; halve batch to fit T4 16 GB
-    #   with fp16, and double gradient_accumulation_steps to keep effective
-    #   batch unchanged at 16.
+    # - batch sizes restored to v8 defaults — deberta-base + LoRA fits T4
+    #   comfortably at batch 4 fp16.
     training_args = TrainingArguments(
         output_dir=OUTPUT_DIR,
         learning_rate=3e-5,
-        per_device_train_batch_size=2,
-        per_device_eval_batch_size=4,
-        gradient_accumulation_steps=8,
+        per_device_train_batch_size=4,
+        per_device_eval_batch_size=8,
+        gradient_accumulation_steps=4,
         num_train_epochs=12,
         weight_decay=0.01,
         evaluation_strategy="epoch",
