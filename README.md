@@ -125,6 +125,7 @@ Endpoints:
 | POST | `/api/v1/analyze` | `{text, source_doc?}` | Synchronous; list of `RiskScoreResponse` (suited to short clauses only) |
 | POST | `/api/v1/report` | `{text, source_doc?, format: "json"\|"pdf"}` | Compliance report path + summary |
 | GET | `/health` | — | Readiness probe (no auth) |
+| GET | `/metrics` | — | Prometheus exposition (no auth; disable with `METRICS_ENABLED=0`) |
 
 All `/api/v1/*` routes require an `X-API-Key: <value>` header matching one
 of `CONTRACTLENS_API_KEYS` (comma-separated). For local dev / CI you may
@@ -136,6 +137,12 @@ PDFs. `/api/v1/contracts` writes the job to a SQLite store
 (`JOBS_DB_PATH`, default `data/jobs.sqlite`) and processes it in a
 ThreadPoolExecutor (`JOB_WORKERS`, default 2). **Single-process only** —
 scaling to multiple API workers needs Postgres + Celery/RQ.
+
+Logs are emitted via structlog as JSON when stderr is not a TTY (default
+in containers) or as human-readable text when running interactively.
+Override with `LOG_FORMAT=json|text`. Every log line carries
+`request_id` and (when present) `api_key_fp` — a 10-char SHA-256 prefix
+of the API key, never the raw key.
 
 The API starts even without `OPENAI_API_KEY` (the Legal Consultant just falls
 back to rule-based notes); set `DISABLE_LLM=1` to suppress the cloud call

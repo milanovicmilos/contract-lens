@@ -53,6 +53,8 @@ mypy>=1.7.0
 bandit>=1.7.5
 
 # Logging & Monitoring
+structlog>=24.1.0
+prometheus-client>=0.20.0
 loguru>=0.7.0
 
 # Development utilities
