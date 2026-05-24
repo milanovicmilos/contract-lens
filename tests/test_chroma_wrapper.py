@@ -42,25 +42,40 @@ def test_chroma_init_failure():
         assert db._collection is None
 
 
-def test_add_texts(mock_chroma_client):
-    """Test adding documents to the database."""
+def test_add_texts_uses_upsert(mock_chroma_client):
+    """add_texts must call upsert (not add) so the seed script is idempotent."""
     _, _, mock_collection = mock_chroma_client
 
     db = ChromaWrapper()
 
     texts = ["Regulation 1", "Regulation 2"]
     metadatas = [{"source": "GDPR"}, {"source": "CCPA"}]
+    ids = ["gdpr-1", "ccpa-1"]
 
-    db.add_texts(texts=texts, metadatas=metadatas)
+    db.add_texts(texts=texts, metadatas=metadatas, ids=ids)
 
-    # Assert collection add was called
-    mock_collection.add.assert_called_once()
-    kwargs = mock_collection.add.call_args.kwargs
-    assert "documents" in kwargs
+    mock_collection.upsert.assert_called_once()
+    kwargs = mock_collection.upsert.call_args.kwargs
     assert kwargs["documents"] == texts
-    assert "metadatas" in kwargs
     assert kwargs["metadatas"] == metadatas
-    assert "ids" in kwargs
+    assert kwargs["ids"] == ids
+
+
+def test_count_reflects_collection(mock_chroma_client):
+    """count() must surface the underlying collection.count()."""
+    _, _, mock_collection = mock_chroma_client
+    mock_collection.count.return_value = 47
+
+    db = ChromaWrapper()
+    assert db.count() == 47
+
+
+def test_count_returns_zero_when_uninitialised():
+    from unittest.mock import patch
+
+    with patch("src.infrastructure.database.chroma_wrapper.CHROMA_AVAILABLE", False):
+        db = ChromaWrapper()
+        assert db.count() == 0
 
 
 def test_search(mock_chroma_client):
