@@ -78,3 +78,12 @@ markers = [
     "integration: Integration tests",
     "slow: Slow tests",
 ]
+
+[tool.bandit]
+exclude_dirs = [".venv", "tests", "scripts", "kaggle"]
+# B101: assert statements — pytest idiom in app code is rare; keep enforced elsewhere.
+# B615: HuggingFace unsafe download (no revision= pin). Tracked as a known accepted
+#       risk: model identifiers are operator-controlled via env vars (CLASSIFIER_MODEL,
+#       EXTRACTOR_MODEL), never user-supplied. Pinning per-call would lock the project
+#       to a specific HF commit and break our model-swap workflow.
+skips = ["B101", "B615"]

@@ -74,10 +74,12 @@ jobs:
           python-version: '3.11'
 
       - name: Install Bandit
-        run: pip install bandit
+        run: pip install "bandit[toml]"
 
       - name: Run Bandit security scan
-        run: bandit -r src --skip B101 --exit-code 1 || true
+        # Config and skip list live in pyproject.toml [tool.bandit].
+        # Fails the build on Medium+ findings (-ll).
+        run: bandit -r src -c pyproject.toml -ll
 
   build-docker:
     runs-on: ubuntu-latest
