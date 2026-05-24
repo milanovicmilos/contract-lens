@@ -161,6 +161,11 @@ four agents per chunk: Extractor → Validator → Legal Consultant (RAG + LLM)
 empty RAG corpus) without breaking the pipeline. The full diagram set with
 the data-flow sequence diagram lives in [docs/arch.md](docs/arch.md).
 
+The **why** behind the load-bearing architectural choices —
+Clean Architecture + LangGraph, LoRA on -base, OpenAI behind a Strategy
+port, SQLite-backed jobs, traceability via extractor spans, JSONL RAG
+corpus — is documented as [Architecture Decision Records](docs/adr/).
+
 ## Models and metrics
 
 See [docs/RESULTS.md](docs/RESULTS.md) for the complete F1 tables, RAGAS
