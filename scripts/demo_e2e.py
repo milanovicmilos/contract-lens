@@ -30,11 +30,11 @@ from dotenv import load_dotenv
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.application.generate_compliance_report import GenerateComplianceReport  # noqa: E402
+from src.application.orchestration.orchestrator import ContractOrchestrator  # noqa: E402
 from src.data.document_normalizer import DocumentNormalizerFactory  # noqa: E402
 from src.data.sliding_window import SlidingWindowTokenizer, SlidingWindowTokenizerConfig  # noqa: E402
 from src.domain.contract import Contract, ContractMetadata  # noqa: E402
 from src.domain.risk_policy import RiskPolicy  # noqa: E402
-from src.infrastructure.agents.orchestrator import ContractOrchestrator  # noqa: E402
 from src.infrastructure.ai.hf_classifier import HFClassifier  # noqa: E402
 from src.infrastructure.database.chroma_wrapper import ChromaWrapper  # noqa: E402
 

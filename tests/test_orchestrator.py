@@ -3,8 +3,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.application.interfaces.iextractor import ExtractionResult
+from src.application.orchestration.orchestrator import ContractOrchestrator
 from src.domain.risk_policy import RiskPolicy
-from src.infrastructure.agents.orchestrator import ContractOrchestrator
 
 
 @pytest.fixture
