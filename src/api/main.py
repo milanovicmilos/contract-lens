@@ -9,21 +9,24 @@ override the dev defaults (small models for cold-start speed in CI / local dev).
 
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+from src.api.jobs import JobStatus, JobStore, default_db_path
 from src.api.middleware import BodySizeLimitMiddleware, RequestIDMiddleware
 from src.api.rate_limit import limiter
 from src.api.security import require_api_key, warn_if_insecure
+from src.api.upload_worker import detect_format, run_analysis_job
 from src.application.generate_compliance_report import GenerateComplianceReport
 from src.application.interfaces.illm_provider import ILLMProvider
 from src.application.orchestration.orchestrator import ContractOrchestrator
@@ -57,6 +60,11 @@ ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(","
 
 orchestrator: Optional[ContractOrchestrator] = None
 report_generator: Optional[GenerateComplianceReport] = None
+job_store: Optional[JobStore] = None
+job_executor: Optional[ThreadPoolExecutor] = None
+
+# Worker pool size — single-process default, override via env in production.
+JOB_WORKERS = max(1, int(os.getenv("JOB_WORKERS", "2")))
 
 
 def _build_llm_provider() -> Optional[ILLMProvider]:
@@ -112,12 +120,22 @@ def _build_orchestrator() -> ContractOrchestrator:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """FastAPI lifespan: build orchestrator at startup unless TESTING=True."""
-    global orchestrator, report_generator
+    """FastAPI lifespan: build orchestrator + job infrastructure at startup."""
+    global orchestrator, report_generator, job_store, job_executor
     warn_if_insecure()
+
+    # Job store is built even in TESTING mode so the upload tests can use it
+    # with a mocked orchestrator. Path is overridden in tests via env.
+    job_store = JobStore(db_path=default_db_path())
+    job_executor = ThreadPoolExecutor(max_workers=JOB_WORKERS, thread_name_prefix="job-")
+    logger.info("Job store ready at %s, %d workers.", default_db_path(), JOB_WORKERS)
+
     if _is_truthy(os.getenv("TESTING")):
         logger.info("TESTING mode — skipping orchestrator initialization.")
         yield
+        job_executor.shutdown(wait=True)
+        job_executor = None
+        job_store = None
         return
 
     try:
@@ -130,6 +148,10 @@ async def lifespan(_app: FastAPI):
     yield
     orchestrator = None
     report_generator = None
+    if job_executor:
+        job_executor.shutdown(wait=True)
+        job_executor = None
+    job_store = None
 
 
 app = FastAPI(
@@ -196,6 +218,25 @@ class ReportRequest(BaseModel):
     format: str = "json"  # "json" or "pdf"
 
 
+class JobAcceptedResponse(BaseModel):
+    job_id: str
+    status: str
+    status_url: str
+
+
+class JobStatusResponse(BaseModel):
+    id: str
+    status: str
+    source_filename: Optional[str] = None
+    source_format: Optional[str] = None
+    char_count: Optional[int] = None
+    created_at: str
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    error: Optional[str] = None
+    result: Optional[List[RiskScoreResponse]] = None
+
+
 # ---------------------------------------------------------------------------
 # Dependency
 # ---------------------------------------------------------------------------
@@ -209,6 +250,18 @@ def get_report_generator() -> GenerateComplianceReport:
     if report_generator is None:
         raise HTTPException(status_code=503, detail="Report generator not initialized")
     return report_generator
+
+
+def get_job_store() -> JobStore:
+    if job_store is None:
+        raise HTTPException(status_code=503, detail="Job store not initialized")
+    return job_store
+
+
+def get_job_executor() -> ThreadPoolExecutor:
+    if job_executor is None:
+        raise HTTPException(status_code=503, detail="Job executor not initialized")
+    return job_executor
 
 
 # ---------------------------------------------------------------------------
@@ -285,6 +338,98 @@ async def generate_report(
         "categories": contract.categories_present(),
         "n_risks": len(contract.risks),
     }
+
+
+@app.post(
+    "/api/v1/contracts",
+    response_model=JobAcceptedResponse,
+    status_code=202,
+)
+@limiter.limit(os.getenv("RATE_LIMIT_UPLOAD", "10/minute"))
+async def upload_contract(
+    request: Request,
+    response: Response,
+    file: UploadFile = File(...),
+    orch: ContractOrchestrator = Depends(get_orchestrator),
+    store: JobStore = Depends(get_job_store),
+    executor: ThreadPoolExecutor = Depends(get_job_executor),
+    api_key: str = Depends(require_api_key),
+):
+    """Accept a PDF/DOCX/TXT/MD upload; analyse in a background job.
+
+    Returns 202 with a job_id immediately; poll GET /api/v1/jobs/{id} to
+    retrieve status and (when completed) the RiskScore list.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Upload must include a filename.")
+
+    try:
+        fmt = detect_format(file.filename)
+    except ValueError as exc:
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
+
+    file_bytes = await file.read()
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+    suffix = Path(file.filename).suffix.lower()
+    job_id = store.create(
+        api_key=api_key,
+        source_filename=file.filename,
+        source_format=fmt.value,
+        char_count=len(file_bytes),
+    )
+
+    executor.submit(
+        run_analysis_job,
+        job_id=job_id,
+        file_bytes=file_bytes,
+        filename=file.filename,
+        suffix=suffix,
+        orchestrator=orch,
+        job_store=store,
+    )
+
+    return JobAcceptedResponse(
+        job_id=job_id,
+        status=JobStatus.PENDING.value,
+        status_url=f"/api/v1/jobs/{job_id}",
+    )
+
+
+@app.get("/api/v1/jobs/{job_id}", response_model=JobStatusResponse)
+async def get_job(
+    job_id: str,
+    request: Request,
+    store: JobStore = Depends(get_job_store),
+    api_key: str = Depends(require_api_key),
+):
+    """Return the current status (and result if completed) of a background job.
+
+    Authorization: a job is only visible to the API key that submitted it.
+    The 'auth-disabled' sentinel key (dev mode) can read every job.
+    """
+    job = store.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found.")
+
+    submitter = job.get("api_key")
+    if submitter and api_key != "auth-disabled" and submitter != api_key:
+        # Behave as 404 (not 403) to avoid leaking job existence to other tenants.
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found.")
+
+    return JobStatusResponse(
+        id=job["id"],
+        status=job["status"],
+        source_filename=job.get("source_filename"),
+        source_format=job.get("source_format"),
+        char_count=job.get("char_count"),
+        created_at=job["created_at"],
+        started_at=job.get("started_at"),
+        completed_at=job.get("completed_at"),
+        error=job.get("error"),
+        result=[RiskScoreResponse(**r) for r in (job.get("result") or [])] or None,
+    )
 
 
 @app.get("/health")

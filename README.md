@@ -120,13 +120,22 @@ Endpoints:
 
 | Method | Path | Body | Purpose |
 |--------|------|------|---------|
-| POST | `/api/v1/analyze` | `{text, source_doc?}` | List of `RiskScoreResponse` (auth required) |
-| POST | `/api/v1/report` | `{text, source_doc?, format: "json"\|"pdf"}` | Compliance report path + summary (auth required) |
+| POST | `/api/v1/contracts` | multipart `file=<pdf\|docx\|txt\|md>` | Accept upload, run analysis in background, return `{job_id, status, status_url}` (202) |
+| GET | `/api/v1/jobs/{job_id}` | — | Poll job status (`pending`/`running`/`completed`/`failed`); returns the RiskScore list on completion |
+| POST | `/api/v1/analyze` | `{text, source_doc?}` | Synchronous; list of `RiskScoreResponse` (suited to short clauses only) |
+| POST | `/api/v1/report` | `{text, source_doc?, format: "json"\|"pdf"}` | Compliance report path + summary |
 | GET | `/health` | — | Readiness probe (no auth) |
 
 All `/api/v1/*` routes require an `X-API-Key: <value>` header matching one
 of `CONTRACTLENS_API_KEYS` (comma-separated). For local dev / CI you may
 set `API_AUTH_DISABLED=1` — the server logs a loud WARNING when this is on.
+
+The async upload flow is the right path for any contract longer than a
+few clauses: the synchronous `/analyze` endpoint will time out on full
+PDFs. `/api/v1/contracts` writes the job to a SQLite store
+(`JOBS_DB_PATH`, default `data/jobs.sqlite`) and processes it in a
+ThreadPoolExecutor (`JOB_WORKERS`, default 2). **Single-process only** —
+scaling to multiple API workers needs Postgres + Celery/RQ.
 
 The API starts even without `OPENAI_API_KEY` (the Legal Consultant just falls
 back to rule-based notes); set `DISABLE_LLM=1` to suppress the cloud call
@@ -134,8 +143,8 @@ explicitly.
 
 Other security knobs (see [`.env.example`](.env.example)): `RATE_LIMIT_ANALYZE`
 (default `60/minute`), `RATE_LIMIT_REPORT` (default `10/minute`),
-`MAX_REQUEST_BODY_MB` (default `5`), `ALLOWED_ORIGINS` (CORS allowlist;
-empty = no CORS).
+`RATE_LIMIT_UPLOAD` (default `10/minute`), `MAX_REQUEST_BODY_MB`
+(default `5`), `ALLOWED_ORIGINS` (CORS allowlist; empty = no CORS).
 
 ## Architecture
 
