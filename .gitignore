@@ -53,6 +53,7 @@ venv/
 ENV/
 env/
 .venv
+.venv-ci-check/
 
 # IDEs
 .vscode/
