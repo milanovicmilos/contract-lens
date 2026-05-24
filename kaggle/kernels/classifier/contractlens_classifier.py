@@ -1,10 +1,26 @@
 """
-ContractLens - Multi-label Classifier Training on Kaggle.
+ContractLens - Multi-label Classifier Training on Kaggle (v9).
 
-STANDALONE Kaggle script. No src/ imports. Copy directly into a Kaggle notebook
-or push as a kernel:
+v9 changes vs v8 (see docs/RESULTS.md for v8 baseline):
+- LoRA r=64, alpha=128 (was r=32, alpha=64) — wider adapter for the same
+  -base backbone gives twice the rank to represent the 41-category boundary.
+- pos_weight cap: 50 (was 100). v8's cap=100 amplified noise on ultra-rare
+  classes (Price Restrictions has 4 positives in eval split, so weight
+  saturated and the loss gradient was dominated by those few examples).
+- Epochs: 12 with EarlyStopping patience=4 (was 8 / 3). More headroom for
+  the wider adapter to converge.
+- LR: 3e-5 (was 5e-5). Slightly lower for the wider adapter.
 
-    kaggle kernels push -p kaggle/
+History:
+- First v9 attempt also swapped backbone to microsoft/deberta-v3-large.
+  The kernel run produced a zero-byte log with an empty failureMessage,
+  consistent with an OOM or pre-Python crash. Reverted to the proven
+  -base backbone here; a separate experiment will retry -large with
+  gradient checkpointing and bf16 in a future revision.
+
+STANDALONE Kaggle script. No src/ imports. Push via:
+
+    kaggle kernels push -p kaggle/kernels/classifier
 
 ENVIRONMENT:
 - Accelerator: GPU T4 x2 (or P100)
@@ -13,14 +29,22 @@ ENVIRONMENT:
   - file: cuad_multilabel.jsonl  ({"text", "labels": [0..1] x 41})
 
 OUTPUT (in /kaggle/working/):
-- deberta-cuad-classifier/  (LoRA-adapted model + tokenizer)
-- eval_report.json          (sklearn classification_report)
+- deberta-cuad-classifier/         (LoRA adapter + tokenizer)
+- deberta-cuad-classifier_merged/  (merged full model — what production loads)
+- eval_report.json                 (default + tuned-threshold reports)
 """
 
 import json
 import logging
 import os
 import sys
+
+# Unbuffered stdout so even an immediate crash flushes the banner to the
+# Kaggle log file. v9.0 produced a zero-byte log when -large OOMed at load
+# time, leaving us no diagnostic to act on; force-flush every print so the
+# next failure surfaces a real signal.
+print("[v9] kernel banner: starting", flush=True)
+sys.stdout.reconfigure(line_buffering=True)
 
 # ---------------------------------------------------------------------------
 # 1. Install dependencies + CUDA-compatible torch
@@ -33,6 +57,7 @@ def _ensure_deps():
     def _pip(*args):
         subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", *args])
 
+    print("[v9] _ensure_deps: pinning torch 2.4.0 cu121 (sm_60 + sm_75)", flush=True)
     # Reinstall torch with broad GPU compatibility (P100 sm_60 + T4 sm_75).
     # Pin transformers to a version that doesn't enforce torch>=2.6 for .bin loading
     # (CVE check that was added in transformers 5.x but we still need torch 2.4 for sm_60).
@@ -44,6 +69,7 @@ def _ensure_deps():
         "--index-url",
         "https://download.pytorch.org/whl/cu121",
     )
+    print("[v9] _ensure_deps: torch ok, installing HF stack", flush=True)
     _pip(
         "transformers==4.46.0",
         "tokenizers>=0.20,<0.21",
@@ -52,6 +78,7 @@ def _ensure_deps():
         "scikit-learn>=1.3.0",
         "datasets>=3.0,<3.5",
     )
+    print("[v9] _ensure_deps: all deps installed", flush=True)
 
 
 _ensure_deps()
@@ -100,17 +127,22 @@ class MultiLabelTrainer(Trainer):
         return (loss, outputs) if return_outputs else loss
 
 
-def compute_pos_weight(dataset, num_labels: int):
-    """Inverse-frequency pos_weight per label from training set."""
+def compute_pos_weight(dataset, num_labels: int, cap: float = POS_WEIGHT_CAP):
+    """Inverse-frequency pos_weight per label from training set.
+
+    cap clamps the per-class weight so the loss is not dominated by 2-7
+    positive examples of ultra-rare categories. v8 used cap=100; v9 lowers
+    to 50 based on the observation that Price Restrictions / MFN /
+    Covenant-Not-To-Sue had F1 < 0.30 with high-variance gradients.
+    """
     n_pos = np.zeros(num_labels, dtype=np.float64)
     total = 0
     for ex in dataset:
         n_pos += np.array(ex["labels"], dtype=np.float64)
         total += 1
     n_neg = total - n_pos
-    # Avoid div-by-zero; cap weight to 100 to prevent loss explosion on ultra-rare classes
     pw = np.where(n_pos > 0, n_neg / np.maximum(n_pos, 1.0), 1.0)
-    pw = np.clip(pw, 1.0, 100.0)
+    pw = np.clip(pw, 1.0, cap)
     return torch.tensor(pw, dtype=torch.float32)
 
 
@@ -135,7 +167,7 @@ def tune_thresholds(probs, y_true, num_labels: int):
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "microsoft/deberta-v3-base"  # safetensors available on main; safer with torch 2.4
+MODEL_NAME = "microsoft/deberta-v3-base"  # v9: reverted from -large after v9.0 OOM
 # Kaggle mounts private CLI-attached datasets under /kaggle/input/datasets/<owner>/<slug>/.
 # The discovery fallback in main() handles other mount conventions transparently.
 DATASET_PATH = "/kaggle/input/datasets/milomilanovi/contractlens-cuad-multilabel/cuad_multilabel.jsonl"
@@ -144,6 +176,7 @@ EVAL_REPORT_PATH = "/kaggle/working/eval_report.json"
 NUM_LABELS = 41
 MAX_LENGTH = 512
 PROB_THRESHOLD = 0.5
+POS_WEIGHT_CAP = 50.0  # v9: tighter (was 100); reduces noise on ultra-rare classes
 
 CUAD_CATEGORIES = [
     "Document Name", "Parties", "Agreement Date", "Effective Date", "Expiration Date",
@@ -187,6 +220,8 @@ def tokenize_fn(batch, tokenizer):
 # 4. Main training pipeline
 # ---------------------------------------------------------------------------
 def main():
+    print(f"[v9] main(): GPU={torch.cuda.is_available()}, count={torch.cuda.device_count()}", flush=True)
+    print(f"[v9] main(): model={MODEL_NAME}, dataset={DATASET_PATH}", flush=True)
     logger.info(f"GPU available: {torch.cuda.is_available()}, count: {torch.cuda.device_count()}")
     logger.info(f"Loading tokenizer: {MODEL_NAME}")
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, use_fast=True)
@@ -240,11 +275,15 @@ def main():
         problem_type="multi_label_classification",
     )
 
+    # v9: wider adapter to match the larger backbone. r=64 / alpha=128 keeps
+    # the alpha/r ratio at 2 (matches v8's r=32 / alpha=64) so the effective
+    # learning-rate scale is comparable; r doubling gives the adapter twice
+    # the rank to represent the 41-category decision boundary.
     peft_config = LoraConfig(
         task_type=TaskType.SEQ_CLS,
         inference_mode=False,
-        r=32,
-        lora_alpha=64,
+        r=64,
+        lora_alpha=128,
         lora_dropout=0.1,
         target_modules=["query_proj", "value_proj", "key_proj"],
     )
@@ -260,13 +299,19 @@ def main():
         f"max={pos_weight.max().item():.2f}, mean={pos_weight.mean().item():.2f}"
     )
 
+    # v9 args (post-revert to -base):
+    # - lr=3e-5 (was 5e-5): slightly lower for the wider adapter.
+    # - num_train_epochs=12 (was 8): more headroom for the wider adapter.
+    # - patience=4 (was 3): allow longer plateau before stopping.
+    # - batch sizes restored to v8 defaults — deberta-base + LoRA fits T4
+    #   comfortably at batch 4 fp16.
     training_args = TrainingArguments(
         output_dir=OUTPUT_DIR,
-        learning_rate=5e-5,
+        learning_rate=3e-5,
         per_device_train_batch_size=4,
         per_device_eval_batch_size=8,
         gradient_accumulation_steps=4,
-        num_train_epochs=8,
+        num_train_epochs=12,
         weight_decay=0.01,
         evaluation_strategy="epoch",
         save_strategy="epoch",
@@ -288,7 +333,7 @@ def main():
         train_dataset=split["train"],
         eval_dataset=split["test"],
         compute_metrics=compute_metrics,
-        callbacks=[EarlyStoppingCallback(early_stopping_patience=3)],
+        callbacks=[EarlyStoppingCallback(early_stopping_patience=4)],
         pos_weight=pos_weight,
     )
 
