@@ -100,33 +100,66 @@ Path to a usable extractor (future work):
 
 ### Aggregate scores
 
-| Run | Justification | n risks | Faithfulness (mean) | Relevancy (mean) |
-|-----|---------------|---------|---------------------|------------------|
-| v1 | Static keyword + rationale, no citation | 303 | 0.185 | 0.330 |
-| v2 | Verbatim quote of triggering keyword + offset, threshold raised to 0.6 | _populated when v2 run finishes_ | _populated_ | _populated_ |
+| Run | Justification | Threshold | n risks | Faithfulness mean | Relevancy mean |
+|-----|---------------|-----------|---------|-------------------|-----------------|
+| v1 | Static keyword + rationale, no citation | 0.50 | 303 | 0.185 | 0.330 |
+| **v2** | Verbatim quote of triggering keyword + offset | 0.60 | 228 | **0.231** | **0.377** |
+
+v2 vs. v1: **+25% faithfulness, +14% relevancy** with the same classifier and
+same 3 contracts. The lift comes from two changes only: (a) embedding a
+verbatim citation of the triggering keyword in every policy-derived
+justification, and (b) raising the classifier confidence threshold from
+0.50 to 0.60 to suppress lower-confidence false positives (228 risks vs
+303 — fewer but more confident).
 
 The full per-category and per-risk breakdown is in
-[`ragas_eval_report.json`](ragas_eval_report.json) +
-[`ragas_eval_report.details.jsonl`](ragas_eval_report.details.jsonl).
+[`ragas_eval_report.json`](ragas_eval_report.json) (v1 baseline),
+[`ragas_eval_report_v2.json`](ragas_eval_report_v2.json) (v2 with citations),
+and the per-risk details files (`*.details.jsonl`).
+
+**Top 10 categories by faithfulness in v2 (n≥2):**
+
+| Category | Faithfulness | Relevancy | n |
+|----------|--------------|-----------|---|
+| Exclusivity | 0.375 | 0.750 | 4 |
+| Parties | 0.333 | 0.167 | 3 |
+| Non-Transferable License | 0.300 | 0.600 | 5 |
+| Price Restrictions | 0.300 | 0.500 | 2 |
+| Source Code Escrow | 0.300 | 0.000 | 2 |
+| Competitive Restriction Exception | 0.286 | 0.286 | 7 |
+| Expiration Date | 0.286 | 0.143 | 7 |
+| Effective Date | 0.275 | 1.000 | 4 |
+| License Grant | 0.275 | 0.875 | 4 |
+| Notice Period To Terminate Renewal | 0.275 | 0.500 | 4 |
 
 ### Interpretation (honest)
 
-The v1 numbers tell us two things:
+The v1 → v2 jump is meaningful but the absolute numbers are still modest.
+Concretely:
 
-1. **Faithfulness is dominated by the rule-based justification template.**
-   When the policy engine simply asserts "Standard X clause", the LLM judge
-   can't trace any factual claim back to the contract text. v2 fixes this by
-   forcing every justification to embed a verbatim citation of the triggering
-   keyword (plus its character offset). Expected effect: faithfulness rises
-   into the 0.4–0.6 band.
+1. **Citations help, but the rule-based justification ceiling is real.**
+   Embedding the triggering keyword + offset in every justification pushed
+   faithfulness from 0.185 to 0.231 (+25%) and relevancy from 0.330 to 0.377
+   (+14%). The gap between mean (0.231) and median (0.300) shows a long
+   tail of low-faithfulness justifications driven by chunks where the
+   classifier is over-eager.
 
-2. **Relevancy is bounded by classifier precision.** On a 2 000-character
-   chunk, the v8 classifier still emits some false-positive categories
-   because BCE + class-weighting was tuned for recall. Raising the
-   threshold to 0.6 in v2 trades recall for precision; that is reflected
-   in fewer risks emitted per contract and higher mean relevancy.
+2. **Relevancy is bounded by classifier precision on 2k-char chunks.**
+   The v8 classifier was tuned for recall (`pos_weight` inversely scaled
+   with class frequency). Raising the threshold from 0.50 to 0.60 in v2
+   reduced emitted risks from 303 to 228 and improved both metrics. A
+   further precision-oriented training pass (lower `pos_weight` cap,
+   larger eval split, hard-negative mining) would close the rest of the
+   gap, but is beyond the scope of this thesis.
 
-These are real, published numbers — not a marketing comparison.
+3. **Path to >0.5 faithfulness.** Replace the policy template with a
+   LLM-rewritten justification that explicitly cites a chunk-level span
+   recovered by the extractor (when the extractor is properly converged
+   — see §2). The architecture already supports this via the Legal
+   Consultant agent; the bottleneck is the extractor, not the orchestrator.
+
+These are honest, real numbers produced by `src/evaluation/ragas_eval.py`
+with `gpt-4o-mini` as the judge over CUAD contracts.
 
 ## 4. Reproducibility
 
