@@ -1,8 +1,26 @@
 """
-ContractLens - Extractive QA Training on Kaggle.
+ContractLens - Extractive QA Training on Kaggle (v8).
 
-STANDALONE Kaggle script for DeBERTa-v3-large fine-tuning on CUAD SQuAD-format.
-No src/ imports. Copy directly into a Kaggle notebook or push as a kernel.
+v8 changes vs v7 (see docs/RESULTS.md §2 for v7 baseline):
+- Backbone: deepset/deberta-v3-base-squad2 (pre-trained on SQuAD 2.0)
+  instead of microsoft/deberta-v3-base. v7 was initialised from a
+  vanilla LM and had to learn the QA head from scratch in 4000 steps —
+  docs/RESULTS.md flagged this as the root cause of the undertrained
+  model. Starting from a SQuAD2 QA checkpoint means the head already
+  predicts plausible start/end logits; we only need domain adaptation
+  to legal text.
+- max_steps: 8000 (was 4000). Doubling the budget for proper CUAD
+  adaptation; the head already exists, but legal vocabulary and span
+  conventions differ from SQuAD2.
+- Post-process bug fix: cls_index was computed as
+  `input_ids.index(0)` which finds the first padding token (DeBERTa
+  CLS id is 1, pad id is 0). The wrong cls_index made the null-answer
+  baseline meaningless and blocked the evaluation-report write in v7.
+  We now pass tokenizer.cls_token_id explicitly.
+
+STANDALONE Kaggle script. No src/ imports. Push via:
+
+    kaggle kernels push -p kaggle/kernels/extractor
 
 ENVIRONMENT:
 - Accelerator: GPU T4 x2 (or P100)
@@ -23,6 +41,11 @@ import string
 import subprocess
 import sys
 from typing import Any, Dict, List
+
+# Unbuffered stdout so even an immediate crash flushes a banner to the log.
+# Mirrors the classifier kernel — see its v9.0 silent-OOM incident.
+print("[ext-v8] kernel banner: starting", flush=True)
+sys.stdout.reconfigure(line_buffering=True)
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +87,7 @@ from transformers import (  # noqa: E402
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "microsoft/deberta-v3-base"  # safetensors available on main; safer with torch 2.4
+MODEL_NAME = "deepset/deberta-v3-base-squad2"  # v8: pre-trained SQuAD2 QA head
 # Kaggle mounts private CLI-attached datasets under /kaggle/input/datasets/<owner>/<slug>/.
 DATASET_PATH = "/kaggle/input/datasets/milomilanovi/contractlens-cuad-squad/cuad_squad.jsonl"
 OUTPUT_DIR = "/kaggle/working/deberta-cuad-extractor"
@@ -72,6 +95,7 @@ EVAL_REPORT_PATH = "/kaggle/working/extractor_eval.json"
 
 MAX_LENGTH = 512
 DOC_STRIDE = 128
+MAX_STEPS = 8000  # v8: doubled from v7 (4000) for proper CUAD adaptation
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +196,7 @@ def prepare_validation_features(examples, tokenizer, pad_on_right=True):
 # 2. Post-processing: convert logits to text answers (best span search)
 # ---------------------------------------------------------------------------
 def postprocess_qa_predictions(
-    examples, features, raw_predictions, n_best_size=20, max_answer_length=200
+    examples, features, raw_predictions, cls_token_id, n_best_size=20, max_answer_length=200
 ):
     all_start_logits, all_end_logits = raw_predictions
     example_id_to_index = {k: i for i, k in enumerate(examples["id"])}
@@ -191,7 +215,10 @@ def postprocess_qa_predictions(
             start_logits = all_start_logits[feature_index]
             end_logits = all_end_logits[feature_index]
             offset_mapping = features[feature_index]["offset_mapping"]
-            cls_index = features[feature_index]["input_ids"].index(0)  # rough
+            # v8 fix: use the actual CLS token id from the tokenizer (DeBERTa CLS
+            # is id=1, not 0; v7 used .index(0) which returned the first padding
+            # token and made the null baseline meaningless).
+            cls_index = features[feature_index]["input_ids"].index(cls_token_id)
             feature_null_score = start_logits[cls_index] + end_logits[cls_index]
             if min_null_score is None or min_null_score < feature_null_score:
                 min_null_score = feature_null_score
@@ -320,27 +347,29 @@ def main():
     # intermittently with KeyError on 'event_id' for models without safetensors.
     model = AutoModelForQuestionAnswering.from_pretrained(MODEL_NAME)
 
-    # The previous run hit the Kaggle 9h GPU limit after 10h on a P100 doing
-    # 2 epochs over the full ~18k training features. Switch to max_steps so we
-    # always have a saved checkpoint regardless of GPU type, and trim batch
-    # size + sequence length so a P100 can finish in <6h.
+    # v8: max_steps=8000 (doubled from v7=4000). The SQuAD2 init means the QA
+    # head is already useful, but legal vocabulary and CUAD span conventions
+    # (much longer spans than SQuAD2's typical 1-5 tokens) still need
+    # substantial adaptation. eval/save every 2000 steps to keep four
+    # checkpoints across the run.
     training_args = TrainingArguments(
         output_dir=OUTPUT_DIR,
         evaluation_strategy="steps",
-        eval_steps=1000,
+        eval_steps=2000,
         save_strategy="steps",
-        save_steps=1000,
+        save_steps=2000,
         save_total_limit=2,
-        learning_rate=3e-5,
+        learning_rate=2e-5,  # v8: lower than v7 (3e-5) — we're fine-tuning a
+                              # pre-trained QA head, not training one from scratch
         per_device_train_batch_size=4,
         per_device_eval_batch_size=8,
         gradient_accumulation_steps=2,
-        max_steps=4000,  # ~one full epoch worth of updates regardless of GPU speed
+        max_steps=MAX_STEPS,
         weight_decay=0.01,
         warmup_ratio=0.1,
         fp16=True,
         logging_dir=f"{OUTPUT_DIR}/logs",
-        logging_steps=50,
+        logging_steps=100,
         report_to="none",
     )
 
@@ -367,6 +396,7 @@ def main():
         val_raw,
         val_tokenized,
         (raw_predictions.predictions[0], raw_predictions.predictions[1]),
+        cls_token_id=tokenizer.cls_token_id,
     )
 
     metrics = evaluate_predictions(predictions, val_raw)
