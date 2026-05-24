@@ -127,13 +127,18 @@ class MultiLabelTrainer(Trainer):
         return (loss, outputs) if return_outputs else loss
 
 
-def compute_pos_weight(dataset, num_labels: int, cap: float = POS_WEIGHT_CAP):
+def compute_pos_weight(dataset, num_labels: int, cap: float):
     """Inverse-frequency pos_weight per label from training set.
 
     cap clamps the per-class weight so the loss is not dominated by 2-7
     positive examples of ultra-rare categories. v8 used cap=100; v9 lowers
     to 50 based on the observation that Price Restrictions / MFN /
     Covenant-Not-To-Sue had F1 < 0.30 with high-variance gradients.
+
+    cap is passed explicitly from main() — keeping it as a required arg
+    instead of a default avoids the v9.0 NameError where POS_WEIGHT_CAP
+    (defined in the Configuration section below) was referenced at def
+    time before the constant existed.
     """
     n_pos = np.zeros(num_labels, dtype=np.float64)
     total = 0
@@ -293,7 +298,7 @@ def main():
     logger.info(f"Trainable: {trainable:,}/{total:,} ({100*trainable/total:.2f}%)")
 
     logger.info("Computing per-class pos_weight from training set distribution...")
-    pos_weight = compute_pos_weight(split["train"], NUM_LABELS)
+    pos_weight = compute_pos_weight(split["train"], NUM_LABELS, cap=POS_WEIGHT_CAP)
     logger.info(
         f"pos_weight stats: min={pos_weight.min().item():.2f}, "
         f"max={pos_weight.max().item():.2f}, mean={pos_weight.mean().item():.2f}"
