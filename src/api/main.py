@@ -20,9 +20,9 @@ from pydantic import BaseModel
 
 from src.application.generate_compliance_report import GenerateComplianceReport
 from src.application.interfaces.illm_provider import ILLMProvider
+from src.application.orchestration.orchestrator import ContractOrchestrator
 from src.domain.contract import Contract, ContractMetadata
 from src.domain.risk_policy import RiskPolicy
-from src.infrastructure.agents.orchestrator import ContractOrchestrator
 from src.infrastructure.ai.hf_classifier import HFClassifier
 from src.infrastructure.database.chroma_wrapper import ChromaWrapper
 

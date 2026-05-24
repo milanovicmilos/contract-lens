@@ -2,8 +2,8 @@
 
 from datetime import datetime
 
-from src.application.interfaces.irisk_analyzer import RiskScore
 from src.domain.contract import Clause, Contract, ContractMetadata
+from src.domain.risk_score import RiskScore
 
 
 def _risk(level: str, category: str = "Non-Compete") -> RiskScore:

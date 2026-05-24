@@ -5,9 +5,9 @@ State machine that coordinates the four agents defined in the spec:
   Extractor -> Validator -> Legal Consultant -> Risk Auditor
 
 Design notes:
-- The LLM client is optional. When absent, the Legal Consultant step degrades
-  gracefully to a rule-based justification instead of raising, so the system
-  remains usable in local-only / offline mode.
+- The LLM provider is optional. When absent, the Legal Consultant step
+  degrades gracefully to a rule-based justification instead of raising, so the
+  system remains usable in local-only / offline mode.
 - The Vector DB is optional. When provided, the Consultant retrieves the top-k
   most-relevant regulatory snippets via RAG before generating its analysis.
 - The Extractor is invoked per detected category to obtain exact span offsets,
@@ -28,9 +28,9 @@ from langgraph.graph import END, START, StateGraph
 from src.application.interfaces.iclassifier import IClassifier
 from src.application.interfaces.iextractor import ExtractionResult, IExtractor
 from src.application.interfaces.illm_provider import ILLMProvider, LLMMessage
-from src.application.interfaces.irisk_analyzer import RiskScore
 from src.application.interfaces.ivector_db import IVectorDatabase
 from src.domain.risk_policy import RiskPolicy
+from src.domain.risk_score import RiskScore
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ class ContractOrchestrator:
     Coordinates the multi-agent pipeline using LangGraph.
 
     Required dependencies: classifier, risk_policy.
-    Optional dependencies: extractor (for span localization), llm_client
+    Optional dependencies: extractor (for span localization), llm_provider
     (for richer consultant analysis), vector_db (for RAG retrieval).
     """
 
@@ -81,25 +81,12 @@ class ContractOrchestrator:
         extractor: Optional[IExtractor] = None,
         llm_provider: Optional[ILLMProvider] = None,
         vector_db: Optional[IVectorDatabase] = None,
-        llm_client: Any = None,  # Deprecated: kept for backward compat with langchain ChatModel
     ) -> None:
-        """Construct the orchestrator.
-
-        Prefer `llm_provider` (ILLMProvider Strategy) over `llm_client`. The
-        latter is a langchain ChatModel kept around for callers that have
-        already wired one up — internally we always go through llm_provider.
-        """
         self.classifier = classifier
         self.extractor = extractor
         self.risk_policy = risk_policy
         self.vector_db = vector_db
-
-        if llm_provider is not None:
-            self.llm_provider: Optional[ILLMProvider] = llm_provider
-            self.llm_client = None
-        else:
-            self.llm_provider = None
-            self.llm_client = llm_client
+        self.llm_provider: Optional[ILLMProvider] = llm_provider
 
         self.graph = self._build_graph()
 
@@ -194,9 +181,9 @@ class ContractOrchestrator:
             except Exception as exc:
                 logger.warning(f"RAG retrieval failed: {exc}")
 
-        if self.llm_provider is None and self.llm_client is None:
+        if self.llm_provider is None:
             note = (
-                "Local rule-based analysis only (LLM client not configured). "
+                "Local rule-based analysis only (LLM provider not configured). "
                 "Review against policy keywords for risk indicators."
             )
             return {"consultant_analysis": note, "rag_context": rag_context}
@@ -217,26 +204,15 @@ class ContractOrchestrator:
         user_prompt = f"Clause text:\n\n{text}{context_block}"
 
         try:
-            if self.llm_provider is not None:
-                resp = self.llm_provider.chat(
-                    [
-                        LLMMessage(role="system", content=system_prompt),
-                        LLMMessage(role="user", content=user_prompt),
-                    ],
-                    temperature=0.0,
-                    max_tokens=200,
-                )
-                analysis = resp.content
-            else:
-                # Legacy langchain ChatModel path
-                from langchain_core.messages import HumanMessage, SystemMessage
-
-                prompt = [
-                    SystemMessage(content=system_prompt),
-                    HumanMessage(content=user_prompt),
-                ]
-                response = self.llm_client.invoke(prompt)
-                analysis = response.content if hasattr(response, "content") else str(response)
+            resp = self.llm_provider.chat(
+                [
+                    LLMMessage(role="system", content=system_prompt),
+                    LLMMessage(role="user", content=user_prompt),
+                ],
+                temperature=0.0,
+                max_tokens=200,
+            )
+            analysis = resp.content
         except Exception as exc:
             logger.warning(f"LLM consultation failed: {exc}; falling back to rule-based note.")
             analysis = (

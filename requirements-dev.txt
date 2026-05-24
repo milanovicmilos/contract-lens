@@ -23,15 +23,13 @@ uvicorn>=0.24.0
 pydantic-settings>=2.0.0
 
 # RAG & Vector DB
-langchain>=0.1.0
-langchain-core>=0.1.0
+# langchain-core is pulled transitively by langgraph; we don't import it directly.
 langgraph>=0.0.30
 chromadb>=0.4.0
 pinecone-client>=2.2.0
 
 # LLM Integration
 openai>=1.3.0
-langchain-openai>=0.0.5
 
 # Document parsing (PDF/DOCX normalizers)
 pypdf>=4.0.0

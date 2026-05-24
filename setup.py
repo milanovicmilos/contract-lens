@@ -16,7 +16,8 @@ setup(
         "uvicorn>=0.24.0",
         "pydantic>=2.0.0",
         "openai>=1.3.0",
-        "langchain>=0.1.0",
+        "langgraph>=0.0.30",
+        "chromadb>=0.4.0",
     ],
     extras_require={
         "dev": [

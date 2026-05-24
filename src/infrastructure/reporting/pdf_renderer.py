@@ -25,8 +25,8 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from src.application.interfaces.irisk_analyzer import RiskScore
 from src.domain.contract import Contract
+from src.domain.risk_score import RiskScore
 
 RISK_COLOURS = {
     "High": colors.HexColor("#dc2626"),

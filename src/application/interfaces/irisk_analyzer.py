@@ -1,47 +1,31 @@
 """
-Interface for Risk Analysis and classification engine.
+Port for the risk-analysis use case.
+
+The concrete RiskScore value object lives in the domain layer
+(`src.domain.risk_score`). This module re-exports it for backward
+compatibility; new code should import RiskScore directly from
+`src.domain.risk_score`.
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Dict, List
 
+from src.domain.risk_score import RiskScore
 
-@dataclass
-class RiskScore:
-    """
-    Represents the risk level and justification for a specific clause.
-
-    Traceability fields (span_start_offset, span_end_offset, source_doc) enable
-    auditing every Risk back to the original contract text — a hard requirement
-    from the project's Transparency goal: every Risk Score must be backed by a
-    citation and a reference to the applicable text location.
-    """
-
-    category: str
-    risk_level: str  # "Low", "Medium", "High"
-    score: float  # 0.0 to 1.0 confidence or exact numerical score
-    justification: str
-    extracted_span: str
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-    # Traceability (optional; default to None for backward compatibility with
-    # callers that don't yet plumb offsets through).
-    span_start_offset: Optional[int] = None
-    span_end_offset: Optional[int] = None
-    source_doc: Optional[str] = None
+__all__ = ["IRiskAnalyzer", "RiskScore"]
 
 
 class IRiskAnalyzer(ABC):
-    """
-    Abstract interface for analyzing risk in contract clauses.
-    This separates the domain logic of defining risk from the underlying DL classification model.
+    """Abstract port for analyzing risk in contract clauses.
+
+    Separates the domain logic of defining risk from the underlying DL
+    classification model that produces candidate clauses.
     """
 
     @abstractmethod
     def analyze_clause(self, category: str, extracted_text: str) -> RiskScore:
         """
-        Analyzes an extracted clause to determine its risk level.
+        Analyze an extracted clause to determine its risk level.
 
         Args:
             category: The contract clause category (e.g., "Governing Law").
@@ -54,7 +38,7 @@ class IRiskAnalyzer(ABC):
     @abstractmethod
     def evaluate_contract_risks(self, extracts: Dict[str, List[str]]) -> List[RiskScore]:
         """
-        Evaluates a set of extracted clauses for a given contract.
+        Evaluate a set of extracted clauses for a given contract.
 
         Args:
             extracts: Dictionary of categorized extracted text spans.

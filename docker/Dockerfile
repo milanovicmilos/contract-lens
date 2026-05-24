@@ -36,7 +36,8 @@ CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--re
 # Stage 3: Production inference environment (minimal)
 FROM base AS inference
 
-# Create lightweight runtime dependencies
+# Create lightweight runtime dependencies. langchain-core is pulled
+# transitively by langgraph; we do not import it directly.
 RUN echo "torch>=2.0.0" > /tmp/runtime-reqs.txt && \
     echo "transformers>=4.36.0" >> /tmp/runtime-reqs.txt && \
     echo "fastapi>=0.104.0" >> /tmp/runtime-reqs.txt && \
@@ -44,9 +45,11 @@ RUN echo "torch>=2.0.0" > /tmp/runtime-reqs.txt && \
     echo "pydantic>=2.0.0" >> /tmp/runtime-reqs.txt && \
     echo "chromadb>=0.4.0" >> /tmp/runtime-reqs.txt && \
     echo "openai>=1.3.0" >> /tmp/runtime-reqs.txt && \
-    echo "langchain>=0.1.0" >> /tmp/runtime-reqs.txt && \
-    echo "langchain-core>=0.1.0" >> /tmp/runtime-reqs.txt && \
-    echo "langchain-openai>=0.0.2" >> /tmp/runtime-reqs.txt && \
+    echo "langgraph>=0.0.30" >> /tmp/runtime-reqs.txt && \
+    echo "peft>=0.7.0" >> /tmp/runtime-reqs.txt && \
+    echo "pypdf>=4.0.0" >> /tmp/runtime-reqs.txt && \
+    echo "python-docx>=1.1.0" >> /tmp/runtime-reqs.txt && \
+    echo "reportlab>=4.0.0" >> /tmp/runtime-reqs.txt && \
     echo "python-dotenv>=1.0.0" >> /tmp/runtime-reqs.txt
 
 RUN pip install --no-cache-dir -r /tmp/runtime-reqs.txt

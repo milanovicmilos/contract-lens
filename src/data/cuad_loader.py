@@ -359,7 +359,12 @@ class CUADDataset:
 
         for contract in contracts:
             # Use filename hash for reproducible split
-            hash_val = int(hashlib.md5(contract.filename.encode()).hexdigest(), 16)
+            # MD5 used purely for deterministic test-split bucketing of filenames.
+            # Not a security primitive — flagging usedforsecurity=False so bandit
+            # recognises the intent.
+            hash_val = int(
+                hashlib.md5(contract.filename.encode(), usedforsecurity=False).hexdigest(), 16
+            )
             bucket = hash_val % 100
 
             if bucket < train_ratio * 100:

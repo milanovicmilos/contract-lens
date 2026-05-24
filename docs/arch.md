@@ -12,8 +12,9 @@ graph TB
     end
 
     subgraph "Application Layer (src/application/)"
-        UC[AnalyzeContractUseCase]
-        IF[Interfaces<br/>IClassifier, IExtractor,<br/>IVectorDatabase, IRiskAnalyzer]
+        UC[GenerateComplianceReport]
+        OR[ContractOrchestrator<br/>LangGraph state machine]
+        IF[Interfaces / Ports<br/>IClassifier, IExtractor,<br/>IVectorDatabase, ILLMProvider]
         EV[LLMEvaluator<br/>RAGAS faithfulness/relevancy]
     end
 
@@ -23,11 +24,10 @@ graph TB
     end
 
     subgraph "Infrastructure Layer (src/infrastructure/)"
-        OR[ContractOrchestrator<br/>LangGraph state machine]
         HC[HFClassifier]
         DE[DebertaExtractor]
         CW[ChromaWrapper<br/>RAG]
-        LLM[OpenAI ChatModel]
+        LLM[OpenAIProvider]
     end
 
     FA --> OR
@@ -172,25 +172,31 @@ src/
 ├── api/
 │   └── main.py                          # FastAPI + lifespan + orchestrator
 ├── application/
-│   ├── analyze_contract_use_case.py     # legacy use-case (kept for reference)
+│   ├── generate_compliance_report.py    # JSON/PDF reporter use case
 │   ├── evaluation/
 │   │   └── evaluator.py                 # LLMEvaluator (RAGAS faithfulness)
-│   └── interfaces/                      # IClassifier, IExtractor, IVectorDatabase, IRiskAnalyzer
+│   ├── orchestration/
+│   │   └── orchestrator.py              # LangGraph state machine (pipeline composition)
+│   └── interfaces/                      # IClassifier, IExtractor, ILLMProvider, IVectorDatabase, IRiskAnalyzer
 ├── domain/
-│   └── risk_policy.py                   # 41 CUAD category policies
+│   ├── contract.py                      # Contract aggregate + Clause + ContractMetadata
+│   ├── risk_policy.py                   # 41 CUAD category policies
+│   └── risk_score.py                    # RiskScore value object (traceability fields)
 ├── evaluation/
 │   └── ragas_eval.py                    # batch eval harness
 ├── infrastructure/
-│   ├── agents/
-│   │   └── orchestrator.py              # LangGraph state machine
 │   ├── ai/
 │   │   ├── hf_classifier.py             # HuggingFace classifier wrapper
 │   │   ├── deberta_extractor.py         # DeBERTa QA extractor
 │   │   ├── train_classifier.py          # Local fine-tuning
 │   │   ├── train_extractor.py           # Local fine-tuning (QA)
 │   │   └── kaggle_train_lora.py         # Kaggle entry point
-│   └── database/
-│       └── chroma_wrapper.py            # ChromaDB RAG store
+│   ├── database/
+│   │   └── chroma_wrapper.py            # ChromaDB RAG store
+│   ├── llm/
+│   │   └── openai_provider.py           # OpenAI Strategy implementation
+│   └── reporting/
+│       └── pdf_renderer.py              # reportlab-based PDF compliance report
 └── data/
     ├── cuad_loader.py                   # CUAD JSON + CSV ingest
     ├── document_normalizer.py           # PDF/DOCX -> markdown
