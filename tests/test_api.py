@@ -1,6 +1,11 @@
 import os
 
 os.environ["TESTING"] = "True"
+# These existing tests target the application-layer wiring (orchestrator
+# fixture override, request validation, response shape) — auth is exercised
+# separately in tests/test_api_security.py. Disable auth here so the test
+# stays focused on the behaviour it actually asserts.
+os.environ["API_AUTH_DISABLED"] = "1"
 
 from unittest.mock import MagicMock  # noqa: E402
 
