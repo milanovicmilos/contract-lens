@@ -19,8 +19,9 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
+from src.application.interfaces.illm_provider import ILLMProvider, LLMMessage
 from src.application.interfaces.irisk_analyzer import RiskScore
 
 logger = logging.getLogger(__name__)
@@ -114,22 +115,43 @@ class LLMEvaluator:
     """Evaluates RAG and Consultant outputs using LLM-as-a-judge patterns.
 
     Accepts either:
+    - an ILLMProvider (preferred — Strategy pattern, vendor-neutral)
     - a legacy mock exposing `.evaluate(original_text, justification) -> dict`
     - a langchain-style chat client exposing `.invoke(messages) -> response`
     """
 
-    def __init__(self, llm_client: Any):
+    def __init__(
+        self,
+        llm_client: Any = None,
+        *,
+        llm_provider: Optional[ILLMProvider] = None,
+    ):
+        if llm_provider is not None and llm_client is not None:
+            raise ValueError("Pass either llm_provider or llm_client, not both.")
+        self.llm_provider = llm_provider
         self.llm_client = llm_client
 
     def _require_client(self) -> None:
-        if self.llm_client is None:
+        if self.llm_provider is None and self.llm_client is None:
             raise ValueError("LLM client requires a valid instance for faithfulness evaluation.")
 
     def _is_legacy_evaluate_client(self) -> bool:
-        return _has_method(self.llm_client, "evaluate")
+        return self.llm_client is not None and _has_method(self.llm_client, "evaluate")
 
     def _call_llm(self, system_prompt: str, user_prompt: str) -> str:
-        """Dispatch to the langchain `.invoke` interface for real LLM clients."""
+        """Dispatch through ILLMProvider when available, otherwise langchain `.invoke`."""
+        if self.llm_provider is not None:
+            response = self.llm_provider.chat(
+                [
+                    LLMMessage(role="system", content=system_prompt),
+                    LLMMessage(role="user", content=user_prompt),
+                ],
+                temperature=0.0,
+                max_tokens=200,
+                response_format="json_object",
+            )
+            return response.content
+
         from langchain_core.messages import HumanMessage, SystemMessage
 
         response = self.llm_client.invoke(

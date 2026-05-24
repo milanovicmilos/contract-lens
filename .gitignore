@@ -125,6 +125,9 @@ docs/_build/
 # Local Chroma vector store (regenerated via scripts/seed_regulations.py)
 chroma_db/
 
+# Generated compliance reports — kept out of git, written into reports/ at runtime
+reports/
+
 # Local trained model artifacts (pulled from Kaggle via scripts/pull_kaggle_models.py)
 models/
 !models/MANIFEST.json

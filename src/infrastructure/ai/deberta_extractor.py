@@ -90,8 +90,8 @@ class DebertaExtractor(IExtractor):
             cls_index = 0
             cls_logit = (out.start_logits[0, cls_index] + out.end_logits[0, cls_index]).item()
 
-            start_idx_candidates = np.argsort(start_logits)[-self.n_best_size:][::-1]
-            end_idx_candidates = np.argsort(end_logits)[-self.n_best_size:][::-1]
+            start_idx_candidates = np.argsort(start_logits)[-self.n_best_size :][::-1]
+            end_idx_candidates = np.argsort(end_logits)[-self.n_best_size :][::-1]
 
             candidates: List[ExtractionResult] = []
             for s in start_idx_candidates:
@@ -106,7 +106,7 @@ class DebertaExtractor(IExtractor):
                     _, end_char = offset_mapping[e]
                     if start_char is None or end_char is None or end_char <= start_char:
                         continue
-                    text = context[int(start_char):int(end_char)].strip()
+                    text = context[int(start_char) : int(end_char)].strip()
                     if not text:
                         continue
                     score = float(start_logits[s] + end_logits[e])
@@ -115,7 +115,9 @@ class DebertaExtractor(IExtractor):
                     # the span if CLS beats it; for CUAD-trained extractors the CLS
                     # logit is often dominant by default, so we keep all candidates
                     # unless the caller explicitly opts in to the suppression margin.
-                    if self.impossible_threshold > 0 and score <= (cls_logit + self.impossible_threshold):
+                    if self.impossible_threshold > 0 and score <= (
+                        cls_logit + self.impossible_threshold
+                    ):
                         continue
                     candidates.append(
                         ExtractionResult(

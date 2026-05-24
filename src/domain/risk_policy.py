@@ -259,6 +259,23 @@ class RiskPolicy:
         else:
             self.rules = dict(DEFAULT_POLICIES)
 
+    @staticmethod
+    def _quote_around(text: str, position: int, length: int, radius: int = 60) -> str:
+        """Build a short verbatim quote (with ellipses) around `position`.
+
+        Used by assess_risk to make rule-based justifications faithful: instead
+        of saying 'X clause' generically, we include the exact substring that
+        triggered the rule so a downstream LLM-as-judge can verify the claim.
+        """
+        if not text:
+            return ""
+        start = max(0, position - radius)
+        end = min(len(text), position + length + radius)
+        snippet = text[start:end].replace("\n", " ").strip()
+        prefix = "..." if start > 0 else ""
+        suffix = "..." if end < len(text) else ""
+        return f'"{prefix}{snippet}{suffix}"'
+
     def assess_risk(self, category: str, text: str) -> Tuple[str, float, str]:
         """
         Assess risk for a clause via keyword matching against the policy.
@@ -281,18 +298,24 @@ class RiskPolicy:
         text_lower = text.lower()
 
         for kw in policy.get("high_risk_keywords", []):
-            if kw.lower() in text_lower:
+            position = text_lower.find(kw.lower())
+            if position != -1:
+                quote = self._quote_around(text, position, len(kw))
+                rationale = policy.get("rationale", "").strip()
                 return (
                     "High",
                     0.9,
-                    f"High-risk keyword '{kw}' detected in {category} clause. "
-                    f"{policy.get('rationale', '')}".strip(),
+                    f"Keyword '{kw}' appears in this {category} clause "
+                    f"at offset {position}: {quote}. {rationale}".strip(),
                 )
 
         default_risk = policy.get("default_risk", "Medium")
         score_map = {"Low": 0.3, "Medium": 0.5, "High": 0.8}
+        rationale = policy.get("rationale", "").strip()
+        sample_quote = self._quote_around(text, 0, min(80, len(text)))
         return (
             default_risk,
             score_map.get(default_risk, 0.5),
-            f"Standard {category} clause. {policy.get('rationale', '')}".strip(),
+            f"Standard {category} clause without high-risk keywords. "
+            f"Excerpt: {sample_quote}. {rationale}".strip(),
         )

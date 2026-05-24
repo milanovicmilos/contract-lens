@@ -19,6 +19,15 @@ exclude = '''
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+]
+
+[tool.ruff.lint]
 select = [
     "E",    # pycodestyle errors
     "W",    # pycodestyle warnings
@@ -30,14 +39,12 @@ select = [
 ignore = [
     "E501",  # line too long
     "W191",  # indentation contains tabs
+    "B008",  # FastAPI Depends() in default arguments is idiomatic
+    "C901",  # function complexity threshold (raised intentionally)
 ]
-exclude = [
-    ".git",
-    ".venv",
-    "__pycache__",
-    "build",
-    "dist",
-]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["E402"]  # module-level imports after env setup are required for FastAPI TestClient
 
 [tool.mypy]
 python_version = "3.11"

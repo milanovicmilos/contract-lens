@@ -3,19 +3,24 @@ FastAPI entry point for ContractLens.
 
 Startup is lenient: missing OPENAI_API_KEY only disables the Legal Consultant
 LLM call (the rest of the pipeline still works in local-only mode). Model
-selection is configurable via env vars so production can override the dev
-defaults (small models for cold-start speed in CI / local dev).
+selection and provider wiring is configurable via env vars so production can
+override the dev defaults (small models for cold-start speed in CI / local dev).
 """
 
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel
 
+from src.application.generate_compliance_report import GenerateComplianceReport
+from src.application.interfaces.illm_provider import ILLMProvider
+from src.domain.contract import Contract, ContractMetadata
 from src.domain.risk_policy import RiskPolicy
 from src.infrastructure.agents.orchestrator import ContractOrchestrator
 from src.infrastructure.ai.hf_classifier import HFClassifier
@@ -36,15 +41,17 @@ CLASSIFIER_MODEL = os.getenv("CLASSIFIER_MODEL", "prajjwal1/bert-tiny")
 EXTRACTOR_MODEL = os.getenv("EXTRACTOR_MODEL", "")
 CHROMA_DIR = os.getenv("CHROMA_DIR", "./chroma_db")
 CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "legal_regulations")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 DISABLE_LLM = _is_truthy(os.getenv("DISABLE_LLM"))
+REPORTS_DIR = Path(os.getenv("REPORTS_DIR", "reports"))
 
 
 orchestrator: Optional[ContractOrchestrator] = None
+report_generator: Optional[GenerateComplianceReport] = None
 
 
-def _build_llm_client():
-    """Try to construct a langchain ChatOpenAI client; return None on any failure."""
+def _build_llm_provider() -> Optional[ILLMProvider]:
+    """Try to construct an ILLMProvider (OpenAI by default); return None on any failure."""
     if DISABLE_LLM:
         logger.info("LLM disabled via DISABLE_LLM env var.")
         return None
@@ -57,11 +64,11 @@ def _build_llm_client():
         return None
 
     try:
-        from langchain_openai import ChatOpenAI
+        from src.infrastructure.llm.openai_provider import OpenAIProvider
 
-        return ChatOpenAI(model=OPENAI_MODEL, openai_api_key=api_key, temperature=0.0)
+        return OpenAIProvider(model=OPENAI_MODEL, api_key=api_key)
     except Exception as exc:
-        logger.error(f"Failed to initialize ChatOpenAI: {exc}; running without LLM.")
+        logger.error(f"Failed to initialize OpenAIProvider: {exc}; running without LLM.")
         return None
 
 
@@ -82,14 +89,14 @@ def _build_orchestrator() -> ContractOrchestrator:
     classifier = HFClassifier(model_name_or_path=CLASSIFIER_MODEL)
     extractor = _build_extractor()
     vector_db = ChromaWrapper(persist_directory=CHROMA_DIR, collection_name=CHROMA_COLLECTION)
-    llm_client = _build_llm_client()
+    llm_provider = _build_llm_provider()
     policy = RiskPolicy()  # ships with full 41-category default policy
 
     return ContractOrchestrator(
         classifier=classifier,
         risk_policy=policy,
         extractor=extractor,
-        llm_client=llm_client,
+        llm_provider=llm_provider,
         vector_db=vector_db,
     )
 
@@ -97,7 +104,7 @@ def _build_orchestrator() -> ContractOrchestrator:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     """FastAPI lifespan: build orchestrator at startup unless TESTING=True."""
-    global orchestrator
+    global orchestrator, report_generator
     if _is_truthy(os.getenv("TESTING")):
         logger.info("TESTING mode — skipping orchestrator initialization.")
         yield
@@ -105,12 +112,14 @@ async def lifespan(_app: FastAPI):
 
     try:
         orchestrator = _build_orchestrator()
+        report_generator = GenerateComplianceReport(output_dir=REPORTS_DIR)
         logger.info("Orchestrator initialized.")
     except Exception as exc:
         logger.exception(f"Failed to initialize orchestrator: {exc}")
         orchestrator = None
     yield
     orchestrator = None
+    report_generator = None
 
 
 app = FastAPI(
@@ -141,6 +150,12 @@ class RiskScoreResponse(BaseModel):
     source_doc: Optional[str] = None
 
 
+class ReportRequest(BaseModel):
+    text: str
+    source_doc: Optional[str] = None
+    format: str = "json"  # "json" or "pdf"
+
+
 # ---------------------------------------------------------------------------
 # Dependency
 # ---------------------------------------------------------------------------
@@ -148,6 +163,12 @@ def get_orchestrator() -> ContractOrchestrator:
     if orchestrator is None:
         raise HTTPException(status_code=503, detail="Orchestrator not initialized")
     return orchestrator
+
+
+def get_report_generator() -> GenerateComplianceReport:
+    if report_generator is None:
+        raise HTTPException(status_code=503, detail="Report generator not initialized")
+    return report_generator
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +199,44 @@ async def analyze_contract(
         )
         for r in risks
     ]
+
+
+@app.post("/api/v1/report")
+async def generate_report(
+    request: ReportRequest,
+    orch: ContractOrchestrator = Depends(get_orchestrator),
+    reporter: GenerateComplianceReport = Depends(get_report_generator),
+):
+    """Analyze a contract text block and emit a compliance report (JSON or PDF)."""
+    if not request.text or not request.text.strip():
+        raise HTTPException(status_code=400, detail="Text cannot be empty")
+    if request.format not in {"json", "pdf"}:
+        raise HTTPException(status_code=400, detail="format must be 'json' or 'pdf'")
+
+    risks = orch.analyze(request.text, source_doc=request.source_doc)
+    contract = Contract(
+        raw_text=request.text,
+        metadata=ContractMetadata(
+            source_path=request.source_doc or "inline",
+            file_format="txt",
+            char_count=len(request.text),
+            analyzed_at=datetime.now(timezone.utc),
+        ),
+    )
+    for r in risks:
+        contract.add_risk(r)
+
+    if request.format == "json":
+        path = reporter.to_json(contract)
+    else:
+        path = reporter.to_pdf(contract)
+
+    return {
+        "report_path": str(path),
+        "summary": contract.risk_summary(),
+        "categories": contract.categories_present(),
+        "n_risks": len(contract.risks),
+    }
 
 
 @app.get("/health")

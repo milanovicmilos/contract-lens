@@ -280,6 +280,120 @@ class DocumentNormalizerFactory:
         return normalizer.normalize(file_path)
 
 
+class PdfDocumentNormalizer(IDocumentNormalizer):
+    """Normalizer for PDF documents backed by pypdf.
+
+    Extracts text per-page (preserving page boundaries for downstream sliding
+    windows), runs the same whitespace/page-artifact pipeline as the text
+    normalizer, and records the true page count in metadata.
+    """
+
+    def __init__(self) -> None:
+        self._text_normalizer = TextDocumentNormalizer()
+
+    def normalize(self, file_path: Path) -> NormalizedDocument:
+        if not file_path.exists():
+            raise FileNotFoundError(f"Document not found: {file_path}")
+
+        try:
+            from pypdf import PdfReader
+        except ImportError as exc:
+            raise RuntimeError(
+                "pypdf not installed; run `pip install pypdf` to enable PDF support."
+            ) from exc
+
+        logger.info(f"Normalizing PDF: {file_path.name}")
+        reader = PdfReader(str(file_path))
+        page_count = len(reader.pages)
+        page_texts: list[str] = []
+        for i, page in enumerate(reader.pages, 1):
+            try:
+                text = page.extract_text() or ""
+            except Exception as exc:
+                logger.warning(f"PDF text extraction failed on page {i}: {exc}")
+                text = ""
+            page_texts.append(text)
+
+        joined = "\n\n".join(page_texts)
+        content = self._text_normalizer._remove_page_artifacts(joined)
+        content = self._text_normalizer._normalize_whitespace(content)
+        content = self._text_normalizer._normalize_newlines(content)
+
+        pdf_meta = dict(reader.metadata or {})
+        metadata = self._text_normalizer._extract_metadata(content)
+        if pdf_meta.get("/Title"):
+            metadata["title"] = str(pdf_meta["/Title"])
+        if pdf_meta.get("/Author"):
+            metadata["author"] = str(pdf_meta["/Author"])
+        metadata["page_count_actual"] = page_count
+
+        logger.info(f"PDF normalized: {file_path.name} ({page_count} pages, {len(content)} chars)")
+        return NormalizedDocument(
+            filename=file_path.name,
+            content=content,
+            format=DocumentFormat.PDF,
+            page_count=page_count,
+            metadata=metadata,
+        )
+
+
+class DocxDocumentNormalizer(IDocumentNormalizer):
+    """Normalizer for DOCX documents backed by python-docx.
+
+    Walks paragraphs in order, falls back to extracting table cell text for
+    structured contracts, and reuses the text-normalizer's whitespace pipeline.
+    """
+
+    def __init__(self) -> None:
+        self._text_normalizer = TextDocumentNormalizer()
+
+    def normalize(self, file_path: Path) -> NormalizedDocument:
+        if not file_path.exists():
+            raise FileNotFoundError(f"Document not found: {file_path}")
+
+        try:
+            import docx  # python-docx
+        except ImportError as exc:
+            raise RuntimeError(
+                "python-docx not installed; run `pip install python-docx` to enable DOCX support."
+            ) from exc
+
+        logger.info(f"Normalizing DOCX: {file_path.name}")
+        document = docx.Document(str(file_path))
+
+        parts: list[str] = []
+        for paragraph in document.paragraphs:
+            if paragraph.text.strip():
+                parts.append(paragraph.text)
+        for table in document.tables:
+            for row in table.rows:
+                row_text = " | ".join(cell.text.strip() for cell in row.cells)
+                if row_text.strip(" |"):
+                    parts.append(row_text)
+
+        joined = "\n\n".join(parts)
+        content = self._text_normalizer._normalize_whitespace(joined)
+        content = self._text_normalizer._normalize_newlines(content)
+
+        core_props = document.core_properties
+        metadata = self._text_normalizer._extract_metadata(content)
+        if core_props.title:
+            metadata["title"] = core_props.title
+        if core_props.author:
+            metadata["author"] = core_props.author
+
+        logger.info(f"DOCX normalized: {file_path.name} ({len(content)} chars)")
+        return NormalizedDocument(
+            filename=file_path.name,
+            content=content,
+            format=DocumentFormat.DOCX,
+            page_count=max(1, len(content) // 3000),
+            metadata=metadata,
+        )
+
+
 # Register default normalizers
 DocumentNormalizerFactory.register(DocumentFormat.TXT, TextDocumentNormalizer())
 DocumentNormalizerFactory.register(DocumentFormat.MD, TextDocumentNormalizer())
+DocumentNormalizerFactory.register(DocumentFormat.PDF, PdfDocumentNormalizer())
+DocumentNormalizerFactory.register(DocumentFormat.DOCX, DocxDocumentNormalizer())

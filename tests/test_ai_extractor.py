@@ -5,7 +5,6 @@ This ensures we don't load heavy models during standard CI test runs.
 
 from unittest.mock import MagicMock, patch
 
-import numpy as np
 import torch
 
 from src.application.interfaces.iextractor import ExtractionResult
@@ -17,15 +16,20 @@ def _patch_extractor_dependencies():
     return (
         patch("src.infrastructure.ai.deberta_extractor.AutoTokenizer"),
         patch("src.infrastructure.ai.deberta_extractor.AutoModelForQuestionAnswering"),
-        patch("src.infrastructure.ai.deberta_extractor.torch.cuda.is_available", return_value=False),
+        patch(
+            "src.infrastructure.ai.deberta_extractor.torch.cuda.is_available", return_value=False
+        ),
     )
 
 
 class TestDebertaExtractor:
     def test_extractor_initialization(self):
-        with patch("src.infrastructure.ai.deberta_extractor.AutoTokenizer") as mock_tok, patch(
-            "src.infrastructure.ai.deberta_extractor.AutoModelForQuestionAnswering"
-        ) as mock_model:
+        with (
+            patch("src.infrastructure.ai.deberta_extractor.AutoTokenizer") as mock_tok,
+            patch(
+                "src.infrastructure.ai.deberta_extractor.AutoModelForQuestionAnswering"
+            ) as mock_model,
+        ):
             mock_tok.from_pretrained.return_value = MagicMock()
             mock_model.from_pretrained.return_value = MagicMock()
             extractor = DebertaExtractor(model_name_or_path="dummy-model", device=-1)
@@ -39,9 +43,12 @@ class TestDebertaExtractor:
     def test_extract_returns_correct_results(self):
         """The extractor should pair the highest start/end logits inside the context window
         and surface a non-empty ExtractionResult with the corresponding character offsets."""
-        with patch("src.infrastructure.ai.deberta_extractor.AutoTokenizer") as mock_tok, patch(
-            "src.infrastructure.ai.deberta_extractor.AutoModelForQuestionAnswering"
-        ) as mock_model:
+        with (
+            patch("src.infrastructure.ai.deberta_extractor.AutoTokenizer") as mock_tok,
+            patch(
+                "src.infrastructure.ai.deberta_extractor.AutoModelForQuestionAnswering"
+            ) as mock_model,
+        ):
             # Mock tokenizer encoding: token positions 1-5 correspond to context chars.
             mock_encoding = MagicMock()
             mock_encoding.__getitem__.side_effect = lambda k: {
@@ -57,12 +64,8 @@ class TestDebertaExtractor:
             mock_tok.from_pretrained.return_value = tok_inst
 
             mock_out = MagicMock()
-            mock_out.start_logits = torch.tensor(
-                [[-9.0, -9.0, -9.0, 5.0, 0.0, 0.0, -9.0]]
-            )
-            mock_out.end_logits = torch.tensor(
-                [[-9.0, -9.0, -9.0, 0.0, 0.0, 5.0, -9.0]]
-            )
+            mock_out.start_logits = torch.tensor([[-9.0, -9.0, -9.0, 5.0, 0.0, 0.0, -9.0]])
+            mock_out.end_logits = torch.tensor([[-9.0, -9.0, -9.0, 0.0, 0.0, 5.0, -9.0]])
             model_inst = MagicMock(return_value=mock_out)
             model_inst.to.return_value = model_inst
             mock_model.from_pretrained.return_value = model_inst
@@ -78,15 +81,18 @@ class TestDebertaExtractor:
             res = results[0]
             assert isinstance(res, ExtractionResult)
             assert res.answer_start == 9  # offset_mapping[3][0]
-            assert res.answer_end == 27   # offset_mapping[5][1]
+            assert res.answer_end == 27  # offset_mapping[5][1]
             assert res.text == "contractor party"
             assert res.question == "Who is the contractor?"
             assert res.score > 0
 
     def test_extract_handles_empty_context(self):
-        with patch("src.infrastructure.ai.deberta_extractor.AutoTokenizer") as mock_tok, patch(
-            "src.infrastructure.ai.deberta_extractor.AutoModelForQuestionAnswering"
-        ) as mock_model:
+        with (
+            patch("src.infrastructure.ai.deberta_extractor.AutoTokenizer") as mock_tok,
+            patch(
+                "src.infrastructure.ai.deberta_extractor.AutoModelForQuestionAnswering"
+            ) as mock_model,
+        ):
             mock_tok.from_pretrained.return_value = MagicMock()
             model_inst = MagicMock()
             model_inst.to.return_value = model_inst
@@ -104,9 +110,12 @@ class TestDebertaExtractor:
         The default (impossible_threshold=0) intentionally keeps all valid spans
         because CUAD-fine-tuned QA models often have a dominant CLS logit even
         when the answer exists; production callers can opt in to suppression."""
-        with patch("src.infrastructure.ai.deberta_extractor.AutoTokenizer") as mock_tok, patch(
-            "src.infrastructure.ai.deberta_extractor.AutoModelForQuestionAnswering"
-        ) as mock_model:
+        with (
+            patch("src.infrastructure.ai.deberta_extractor.AutoTokenizer") as mock_tok,
+            patch(
+                "src.infrastructure.ai.deberta_extractor.AutoModelForQuestionAnswering"
+            ) as mock_model,
+        ):
             mock_encoding = MagicMock()
             mock_encoding.__getitem__.side_effect = lambda k: {
                 "input_ids": torch.tensor([[101, 200, 201, 202, 102]]),

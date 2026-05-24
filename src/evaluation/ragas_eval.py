@@ -32,6 +32,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from dotenv import load_dotenv
+
 from src.application.evaluation.evaluator import EvaluationResult, LLMEvaluator
 from src.application.interfaces.irisk_analyzer import RiskScore
 from src.domain.risk_policy import RiskPolicy
@@ -39,20 +41,21 @@ from src.infrastructure.agents.orchestrator import ContractOrchestrator
 from src.infrastructure.ai.hf_classifier import HFClassifier
 from src.infrastructure.database.chroma_wrapper import ChromaWrapper
 
+load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
-def _build_llm_client(model: str):
+def _build_llm_provider(model: str):
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         return None
     try:
-        from langchain_openai import ChatOpenAI
+        from src.infrastructure.llm.openai_provider import OpenAIProvider
 
-        return ChatOpenAI(model=model, openai_api_key=api_key, temperature=0.0)
+        return OpenAIProvider(model=model, api_key=api_key)
     except Exception as exc:
-        logger.warning(f"Could not build LLM client: {exc}")
+        logger.warning(f"Could not build OpenAIProvider: {exc}")
         return None
 
 
@@ -100,12 +103,12 @@ def evaluate(
     contracts = _load_contracts(input_path, max_contracts)
     logger.info(f"Loaded {len(contracts)} contracts")
 
-    llm = _build_llm_client(eval_model)
-    if llm is None:
-        logger.warning("No LLM client available; RAGAS metrics will be skipped.")
+    llm_provider = _build_llm_provider(eval_model)
+    if llm_provider is None:
+        logger.warning("No LLM provider available; RAGAS metrics will be skipped.")
         evaluator = None
     else:
-        evaluator = LLMEvaluator(llm_client=llm)
+        evaluator = LLMEvaluator(llm_provider=llm_provider)
 
     classifier = HFClassifier(model_name_or_path=classifier_model)
     vector_db = (
@@ -117,7 +120,7 @@ def evaluate(
         classifier=classifier,
         risk_policy=RiskPolicy(),
         extractor=None,
-        llm_client=llm,
+        llm_provider=llm_provider,
         vector_db=vector_db,
     )
 

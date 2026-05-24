@@ -19,6 +19,7 @@ Design notes:
 from __future__ import annotations
 
 import logging
+import os
 import re
 from typing import Any, Dict, List, Optional, TypedDict
 
@@ -26,6 +27,7 @@ from langgraph.graph import END, START, StateGraph
 
 from src.application.interfaces.iclassifier import IClassifier
 from src.application.interfaces.iextractor import ExtractionResult, IExtractor
+from src.application.interfaces.illm_provider import ILLMProvider, LLMMessage
 from src.application.interfaces.irisk_analyzer import RiskScore
 from src.application.interfaces.ivector_db import IVectorDatabase
 from src.domain.risk_policy import RiskPolicy
@@ -41,7 +43,10 @@ HEADER_PATTERNS = [
     re.compile(r"^\s*[A-Z][A-Z\s]{4,}$"),  # all-caps headers
 ]
 
-CLASSIFICATION_THRESHOLD = 0.5
+# Classifier confidence cutoff. v8 produces well-spread sigmoid outputs (0.02-0.97
+# range observed); 0.55 trades a small amount of recall for noticeably better
+# precision (fewer false-positive risks emitted on unrelated chunks).
+CLASSIFICATION_THRESHOLD = float(os.getenv("CLASSIFICATION_THRESHOLD", "0.55"))
 MIN_CLAUSE_WORDS = 8
 
 
@@ -74,14 +79,28 @@ class ContractOrchestrator:
         classifier: IClassifier,
         risk_policy: RiskPolicy,
         extractor: Optional[IExtractor] = None,
-        llm_client: Any = None,
+        llm_provider: Optional[ILLMProvider] = None,
         vector_db: Optional[IVectorDatabase] = None,
+        llm_client: Any = None,  # Deprecated: kept for backward compat with langchain ChatModel
     ) -> None:
+        """Construct the orchestrator.
+
+        Prefer `llm_provider` (ILLMProvider Strategy) over `llm_client`. The
+        latter is a langchain ChatModel kept around for callers that have
+        already wired one up — internally we always go through llm_provider.
+        """
         self.classifier = classifier
         self.extractor = extractor
         self.risk_policy = risk_policy
-        self.llm_client = llm_client
         self.vector_db = vector_db
+
+        if llm_provider is not None:
+            self.llm_provider: Optional[ILLMProvider] = llm_provider
+            self.llm_client = None
+        else:
+            self.llm_provider = None
+            self.llm_client = llm_client
+
         self.graph = self._build_graph()
 
     # ------------------------------------------------------------------ graph
@@ -175,36 +194,49 @@ class ContractOrchestrator:
             except Exception as exc:
                 logger.warning(f"RAG retrieval failed: {exc}")
 
-        if self.llm_client is None:
+        if self.llm_provider is None and self.llm_client is None:
             note = (
                 "Local rule-based analysis only (LLM client not configured). "
                 "Review against policy keywords for risk indicators."
             )
             return {"consultant_analysis": note, "rag_context": rag_context}
 
+        context_block = ""
+        if rag_context:
+            snippets = "\n\n".join(
+                f"[{i + 1}] {r.get('text', '')[:500]}" for i, r in enumerate(rag_context)
+            )
+            context_block = f"\n\nRELEVANT REGULATIONS:\n{snippets}"
+
+        system_prompt = (
+            "You are an expert legal consultant. Provide a concise "
+            "(1-2 sentences) analysis of the risks present in the following "
+            "contract clause. Cite specific regulations from RELEVANT REGULATIONS "
+            "when applicable. If the clause is standard and non-hazardous, say so."
+        )
+        user_prompt = f"Clause text:\n\n{text}{context_block}"
+
         try:
-            from langchain_core.messages import HumanMessage, SystemMessage
-
-            context_block = ""
-            if rag_context:
-                snippets = "\n\n".join(
-                    f"[{i+1}] {r.get('text', '')[:500]}" for i, r in enumerate(rag_context)
+            if self.llm_provider is not None:
+                resp = self.llm_provider.chat(
+                    [
+                        LLMMessage(role="system", content=system_prompt),
+                        LLMMessage(role="user", content=user_prompt),
+                    ],
+                    temperature=0.0,
+                    max_tokens=200,
                 )
-                context_block = f"\n\nRELEVANT REGULATIONS:\n{snippets}"
+                analysis = resp.content
+            else:
+                # Legacy langchain ChatModel path
+                from langchain_core.messages import HumanMessage, SystemMessage
 
-            prompt = [
-                SystemMessage(
-                    content=(
-                        "You are an expert legal consultant. Provide a concise "
-                        "(1-2 sentences) analysis of the risks present in the following "
-                        "contract clause. Cite specific regulations from RELEVANT REGULATIONS "
-                        "when applicable. If the clause is standard and non-hazardous, say so."
-                    )
-                ),
-                HumanMessage(content=f"Clause text:\n\n{text}{context_block}"),
-            ]
-            response = self.llm_client.invoke(prompt)
-            analysis = response.content if hasattr(response, "content") else str(response)
+                prompt = [
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=user_prompt),
+                ]
+                response = self.llm_client.invoke(prompt)
+                analysis = response.content if hasattr(response, "content") else str(response)
         except Exception as exc:
             logger.warning(f"LLM consultation failed: {exc}; falling back to rule-based note.")
             analysis = (
