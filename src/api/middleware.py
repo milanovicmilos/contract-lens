@@ -20,6 +20,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from src.api.logging_config import bind_request_context, clear_request_context
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_BODY_MB = 5
@@ -63,13 +65,21 @@ class BodySizeLimitMiddleware(BaseHTTPMiddleware):
 
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
-    """Assign / honour X-Request-ID; expose it on request.state and response."""
+    """Assign / honour X-Request-ID; expose on request.state, response header,
+    and the structlog contextvar so every log line emitted during the
+    request carries the same request_id and (when present) hashed API key.
+    """
 
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         rid = request.headers.get(REQUEST_ID_HEADER) or uuid.uuid4().hex
         request.state.request_id = rid
-        response = await call_next(request)
+        api_key = request.headers.get("x-api-key")
+        bind_request_context(request_id=rid, api_key=api_key)
+        try:
+            response = await call_next(request)
+        finally:
+            clear_request_context()
         response.headers[REQUEST_ID_HEADER] = rid
         return response

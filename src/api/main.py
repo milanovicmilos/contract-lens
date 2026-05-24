@@ -23,6 +23,8 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from src.api.jobs import JobStatus, JobStore, default_db_path
+from src.api.logging_config import configure_logging
+from src.api.metrics import MetricsMiddleware, metrics_enabled, render_metrics
 from src.api.middleware import BodySizeLimitMiddleware, RequestIDMiddleware
 from src.api.rate_limit import limiter
 from src.api.security import require_api_key, warn_if_insecure
@@ -122,6 +124,7 @@ def _build_orchestrator() -> ContractOrchestrator:
 async def lifespan(_app: FastAPI):
     """FastAPI lifespan: build orchestrator + job infrastructure at startup."""
     global orchestrator, report_generator, job_store, job_executor
+    configure_logging()
     warn_if_insecure()
 
     # Job store is built even in TESTING mode so the upload tests can use it
@@ -178,7 +181,9 @@ def _rate_limit_handler(request: Request, exc: RateLimitExceeded):
 app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
 
 # Middleware order matters: outermost runs first on the request and last
-# on the response. Request ID -> body size -> CORS -> SlowAPI -> route.
+# on the response. Request ID -> metrics -> body size -> CORS -> SlowAPI -> route.
+# Metrics is placed near the outside so it captures latency including the
+# SlowAPI middleware's own work and the body-size rejection latency.
 app.add_middleware(SlowAPIMiddleware)
 if ALLOWED_ORIGINS:
     app.add_middleware(
@@ -189,6 +194,7 @@ if ALLOWED_ORIGINS:
         allow_headers=["X-API-Key", "Content-Type", "X-Request-ID"],
     )
 app.add_middleware(BodySizeLimitMiddleware)
+app.add_middleware(MetricsMiddleware)
 app.add_middleware(RequestIDMiddleware)
 
 
@@ -442,3 +448,16 @@ async def health_check():
         "version": "1.0.0",
         "orchestrator_ready": orchestrator is not None,
     }
+
+
+@app.get("/metrics")
+async def metrics_endpoint():
+    """Prometheus exposition. No auth — Prometheus scrapers do not carry keys.
+
+    Disable with METRICS_ENABLED=0 if the deployment exposes :8000 to the
+    public internet without a network policy in front; otherwise the
+    metrics are safe to expose (no secrets, just counters / histograms).
+    """
+    if not metrics_enabled():
+        raise HTTPException(status_code=404, detail="Metrics endpoint disabled.")
+    return render_metrics()
