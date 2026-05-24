@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 from src.application.generate_compliance_report import GenerateComplianceReport
-from src.application.interfaces.irisk_analyzer import RiskScore
 from src.domain.contract import Contract, ContractMetadata
+from src.domain.risk_score import RiskScore
 
 
 def _sample_contract(source: str = "contract.txt") -> Contract:

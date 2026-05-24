@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from src.application.interfaces.illm_provider import ILLMProvider, LLMMessage
-from src.application.interfaces.irisk_analyzer import RiskScore
+from src.domain.risk_score import RiskScore
 
 logger = logging.getLogger(__name__)
 

@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.application.evaluation.evaluator import LLMEvaluator
-from src.application.interfaces.irisk_analyzer import RiskScore
+from src.domain.risk_score import RiskScore
 
 
 def test_evaluate_faithfulness_with_mock():

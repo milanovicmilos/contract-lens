@@ -7,7 +7,7 @@ from unittest.mock import MagicMock  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from src.api.main import app, get_orchestrator  # noqa: E402
-from src.application.interfaces.irisk_analyzer import RiskScore  # noqa: E402
+from src.domain.risk_score import RiskScore  # noqa: E402
 
 
 def _mock_get_orchestrator():

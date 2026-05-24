@@ -35,8 +35,8 @@ from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
 
 from src.application.evaluation.evaluator import EvaluationResult, LLMEvaluator
-from src.application.interfaces.irisk_analyzer import RiskScore
 from src.domain.risk_policy import RiskPolicy
+from src.domain.risk_score import RiskScore
 from src.infrastructure.agents.orchestrator import ContractOrchestrator
 from src.infrastructure.ai.hf_classifier import HFClassifier
 from src.infrastructure.database.chroma_wrapper import ChromaWrapper

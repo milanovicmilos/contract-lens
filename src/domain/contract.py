@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from src.application.interfaces.irisk_analyzer import RiskScore
+from src.domain.risk_score import RiskScore
 
 
 @dataclass

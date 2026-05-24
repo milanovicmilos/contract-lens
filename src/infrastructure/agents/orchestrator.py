@@ -28,9 +28,9 @@ from langgraph.graph import END, START, StateGraph
 from src.application.interfaces.iclassifier import IClassifier
 from src.application.interfaces.iextractor import ExtractionResult, IExtractor
 from src.application.interfaces.illm_provider import ILLMProvider, LLMMessage
-from src.application.interfaces.irisk_analyzer import RiskScore
 from src.application.interfaces.ivector_db import IVectorDatabase
 from src.domain.risk_policy import RiskPolicy
+from src.domain.risk_score import RiskScore
 
 logger = logging.getLogger(__name__)
 
