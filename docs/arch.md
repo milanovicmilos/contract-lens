@@ -12,7 +12,7 @@ graph TB
     end
 
     subgraph "Application Layer (src/application/)"
-        UC[AnalyzeContractUseCase]
+        UC[GenerateComplianceReport]
         IF[Interfaces<br/>IClassifier, IExtractor,<br/>IVectorDatabase, IRiskAnalyzer]
         EV[LLMEvaluator<br/>RAGAS faithfulness/relevancy]
     end
@@ -172,7 +172,7 @@ src/
 ├── api/
 │   └── main.py                          # FastAPI + lifespan + orchestrator
 ├── application/
-│   ├── analyze_contract_use_case.py     # legacy use-case (kept for reference)
+│   ├── generate_compliance_report.py    # JSON/PDF reporter use case
 │   ├── evaluation/
 │   │   └── evaluator.py                 # LLMEvaluator (RAGAS faithfulness)
 │   └── interfaces/                      # IClassifier, IExtractor, IVectorDatabase, IRiskAnalyzer

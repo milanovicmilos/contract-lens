@@ -29,7 +29,6 @@ src/
 │   ├── contract.py                  # Contract aggregate + ContractMetadata + Clause
 │   └── risk_policy.py               # 41-category default policy with citation-aware justifications
 ├── application/                     # Use cases (no infra dependencies)
-│   ├── analyze_contract_use_case.py
 │   ├── generate_compliance_report.py
 │   ├── evaluation/
 │   │   └── evaluator.py             # LLMEvaluator (RAGAS faithfulness / relevancy)
