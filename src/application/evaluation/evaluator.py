@@ -7,10 +7,9 @@ claims from the answer, then check whether each claim can be verified from
 the source. We approximate that with a single structured LLM prompt that
 returns a 0..1 score plus an explicit reasoning trace.
 
-This module remains testable without a real LLM by accepting any object that
-exposes either:
-- a callable `evaluate(original_text, justification) -> dict` (legacy / mock), or
-- a langchain-style `invoke(messages) -> response` interface (real LLM client).
+The evaluator depends only on the ILLMProvider Strategy port, so tests can
+inject a fake provider returning a canned JSON payload without pulling in
+any vendor SDK.
 """
 
 from __future__ import annotations
@@ -19,7 +18,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from src.application.interfaces.illm_provider import ILLMProvider, LLMMessage
 from src.domain.risk_score import RiskScore
@@ -92,87 +91,33 @@ def _extract_json(text: str) -> Dict[str, Any]:
         return {}
 
 
-def _has_method(obj: Any, name: str) -> bool:
-    """True iff obj defines a real (non-auto-generated) attribute by that name.
-
-    MagicMock auto-creates any attribute access, so plain hasattr() can't
-    distinguish a deliberately-stubbed `.evaluate` from incidental access.
-    We special-case MagicMock by consulting its child-mock registry.
-    """
-    if obj is None:
-        return False
-    try:
-        from unittest.mock import MagicMock
-
-        if isinstance(obj, MagicMock):
-            return name in obj._mock_children or name in obj.__dict__
-    except ImportError:
-        pass
-    return hasattr(obj, name)
-
-
 class LLMEvaluator:
     """Evaluates RAG and Consultant outputs using LLM-as-a-judge patterns.
 
-    Accepts either:
-    - an ILLMProvider (preferred — Strategy pattern, vendor-neutral)
-    - a legacy mock exposing `.evaluate(original_text, justification) -> dict`
-    - a langchain-style chat client exposing `.invoke(messages) -> response`
+    The evaluator depends on the vendor-neutral ILLMProvider Strategy port,
+    so tests can substitute a fake provider that returns a canned JSON
+    response without any vendor SDK in the loop.
     """
 
-    def __init__(
-        self,
-        llm_client: Any = None,
-        *,
-        llm_provider: Optional[ILLMProvider] = None,
-    ):
-        if llm_provider is not None and llm_client is not None:
-            raise ValueError("Pass either llm_provider or llm_client, not both.")
+    def __init__(self, llm_provider: ILLMProvider):
+        if llm_provider is None:
+            raise ValueError("llm_provider is required for LLM-as-a-judge evaluation.")
         self.llm_provider = llm_provider
-        self.llm_client = llm_client
-
-    def _require_client(self) -> None:
-        if self.llm_provider is None and self.llm_client is None:
-            raise ValueError("LLM client requires a valid instance for faithfulness evaluation.")
-
-    def _is_legacy_evaluate_client(self) -> bool:
-        return self.llm_client is not None and _has_method(self.llm_client, "evaluate")
 
     def _call_llm(self, system_prompt: str, user_prompt: str) -> str:
-        """Dispatch through ILLMProvider when available, otherwise langchain `.invoke`."""
-        if self.llm_provider is not None:
-            response = self.llm_provider.chat(
-                [
-                    LLMMessage(role="system", content=system_prompt),
-                    LLMMessage(role="user", content=user_prompt),
-                ],
-                temperature=0.0,
-                max_tokens=200,
-                response_format="json_object",
-            )
-            return response.content
-
-        from langchain_core.messages import HumanMessage, SystemMessage
-
-        response = self.llm_client.invoke(
-            [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
+        response = self.llm_provider.chat(
+            [
+                LLMMessage(role="system", content=system_prompt),
+                LLMMessage(role="user", content=user_prompt),
+            ],
+            temperature=0.0,
+            max_tokens=200,
+            response_format="json_object",
         )
-        return response.content if hasattr(response, "content") else str(response)
+        return response.content
 
     def evaluate_faithfulness(self, risk_score: RiskScore, original_text: str) -> EvaluationResult:
         """Score how well risk_score.justification is supported by original_text."""
-        self._require_client()
-
-        if self._is_legacy_evaluate_client():
-            verdict = self.llm_client.evaluate(
-                original_text=original_text, justification=risk_score.justification
-            )
-            return EvaluationResult(
-                metric_name="faithfulness",
-                score=float(verdict.get("faithfulness", 0.0)),
-                reasoning=str(verdict.get("reasoning", "No reasoning provided.")),
-            )
-
         user_prompt = FAITHFULNESS_USER_TEMPLATE.format(
             original_text=original_text.strip()[:4000],
             justification=risk_score.justification.strip()[:2000],
@@ -189,16 +134,6 @@ class LLMEvaluator:
 
     def evaluate_relevancy(self, category: str, extracted_span: str) -> EvaluationResult:
         """Score whether extracted_span actually relates to category."""
-        self._require_client()
-
-        if self._is_legacy_evaluate_client():
-            verdict = self.llm_client.evaluate(original_text=extracted_span, justification=category)
-            return EvaluationResult(
-                metric_name="relevancy",
-                score=float(verdict.get("relevancy", verdict.get("faithfulness", 0.0))),
-                reasoning=str(verdict.get("reasoning", "No reasoning provided.")),
-            )
-
         user_prompt = RELEVANCY_USER_TEMPLATE.format(
             category=category, span=extracted_span.strip()[:2000]
         )

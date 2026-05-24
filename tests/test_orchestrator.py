@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.application.interfaces.iextractor import ExtractionResult
+from src.application.interfaces.illm_provider import LLMResponse
 from src.application.orchestration.orchestrator import ContractOrchestrator
 from src.domain.risk_policy import RiskPolicy
 
@@ -53,7 +54,7 @@ def test_orchestrator_valid_flow_with_extractor(mock_classifier, mock_extractor,
         classifier=mock_classifier,
         risk_policy=risk_policy,
         extractor=mock_extractor,
-        llm_client=None,  # graceful degradation expected
+        llm_provider=None,  # graceful degradation expected
     )
 
     text = "This contract may terminate immediately upon material breach by either party."
@@ -77,7 +78,7 @@ def test_orchestrator_skips_when_header(mock_classifier, mock_extractor, risk_po
         classifier=mock_classifier,
         risk_policy=risk_policy,
         extractor=mock_extractor,
-        llm_client=None,
+        llm_provider=None,
     )
 
     risks = orchestrator.analyze("ARTICLE 5. TERMINATION RIGHTS AND OBLIGATIONS")
@@ -91,7 +92,7 @@ def test_orchestrator_skips_when_too_short(mock_classifier, mock_extractor, risk
         classifier=mock_classifier,
         risk_policy=risk_policy,
         extractor=mock_extractor,
-        llm_client=None,
+        llm_provider=None,
     )
 
     risks = orchestrator.analyze("Short text terminate")
@@ -105,7 +106,7 @@ def test_orchestrator_skips_extractor_when_not_provided(mock_classifier, risk_po
         classifier=mock_classifier,
         risk_policy=risk_policy,
         extractor=None,
-        llm_client=None,
+        llm_provider=None,
     )
 
     text = "This contract may terminate immediately upon material breach by either party."
@@ -117,17 +118,18 @@ def test_orchestrator_skips_extractor_when_not_provided(mock_classifier, risk_po
 
 
 def test_orchestrator_invokes_llm_when_provided(mock_classifier, mock_extractor, risk_policy):
-    """When an LLM client is provided, the consultant analysis should reach the RiskScore."""
-    mock_llm = MagicMock()
-    mock_response = MagicMock()
-    mock_response.content = "This clause permits convenience termination with no notice."
-    mock_llm.invoke.return_value = mock_response
+    """When an LLM provider is supplied, its analysis must reach the RiskScore."""
+    mock_provider = MagicMock()
+    mock_provider.chat.return_value = LLMResponse(
+        content="This clause permits convenience termination with no notice.",
+        model="fake",
+    )
 
     orchestrator = ContractOrchestrator(
         classifier=mock_classifier,
         risk_policy=risk_policy,
         extractor=mock_extractor,
-        llm_client=mock_llm,
+        llm_provider=mock_provider,
     )
 
     text = "This contract may terminate immediately upon material breach by either party."
@@ -135,4 +137,4 @@ def test_orchestrator_invokes_llm_when_provided(mock_classifier, mock_extractor,
 
     assert len(risks) == 1
     assert "permits convenience termination" in risks[0].justification
-    mock_llm.invoke.assert_called_once()
+    mock_provider.chat.assert_called_once()
