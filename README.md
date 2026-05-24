@@ -73,37 +73,41 @@ kaggle/
 
 ## Quickstart
 
-### 1. Local development
+Three commands from clone to analysed contract:
 
 ```bash
-git clone https://github.com/milanovicmilos/contract-lens.git
-cd contract-lens
-python -m venv .venv
-.venv/Scripts/activate     # PowerShell: .\.venv\Scripts\Activate.ps1
-pip install -r requirements-dev.txt
-cp .env.example .env       # add your OPENAI_API_KEY (cloud LLM is optional)
+git clone https://github.com/milanovicmilos/contract-lens.git && cd contract-lens
+python -m venv .venv && .venv/Scripts/activate   # PowerShell: .\.venv\Scripts\Activate.ps1
+inv install
+inv seed
+inv demo --contract CUAD_v1/full_contract_txt/<some_contract>.txt
 ```
 
-### 2. Run the CI checks before pushing
+Outputs land in `reports/<stem>_compliance.json` and
+`reports/<stem>_compliance.pdf`. `inv` is the project task runner
+(cross-platform, replaces `make`); `inv --list` shows every target.
+
+### Common workflows via `inv`
+
+| Goal | Command |
+|---|---|
+| Install dev deps | `inv install` |
+| Seed RAG corpus | `inv seed` |
+| Run an end-to-end demo on one contract | `inv demo --contract <path>` |
+| Start the API server | `inv api` |
+| Run CI checks locally (lint + tests + security) | `inv ci` |
+| Format code (black + ruff --fix) | `inv format` |
+| Run RAGAS evaluation | `inv eval --max-contracts 3` |
+| Train classifier locally (small model) | `inv train-classifier` |
+| Pull Kaggle-trained models | `inv pull-models` |
+| Pre-release sanity check (CI + clean tree) | `inv release-check` |
+
+CI runs the same three quality gates (`inv ci`):
 
 ```bash
-black src tests
-ruff check src tests
-pytest tests/ --cov=src
-```
-
-All three commands must pass — `.github/workflows/ci.yml` runs the same ones.
-
-### 3. Analyse a contract end-to-end
-
-```bash
-# Populate the local RAG store (one-off)
-python scripts/seed_regulations.py
-
-# Parse a contract, classify, render compliance reports
-python scripts/demo_e2e.py "CUAD_v1/full_contract_txt/<some_contract>.txt"
-# -> reports/<stem>_compliance.json
-# -> reports/<stem>_compliance.pdf
+inv lint        # black --check + ruff check
+inv test        # pytest with coverage
+inv security    # bandit scan, fails on Medium+ findings
 ```
 
 ### 4. Start the API server

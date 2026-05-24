@@ -58,6 +58,7 @@ prometheus-client>=0.20.0
 loguru>=0.7.0
 
 # Development utilities
+invoke>=2.0.0
 ipython>=8.18.0
 jupyter>=1.0.0
 notebook>=7.0.0
