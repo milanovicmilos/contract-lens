@@ -32,7 +32,7 @@ Status oznake: ✅ završeno, 🟡 u toku, ⏳ čeka spoljni resurs, ⬜ nije po
 
 ## FAZA 4 — Agent Orchestration ✅
 
-- ✅ `src/infrastructure/agents/orchestrator.py` — LangGraph state machine (Extractor → Validator → Consultant → Auditor)
+- ✅ `src/application/orchestration/orchestrator.py` — LangGraph state machine (Extractor → Validator → Consultant → Auditor)
   - Validator radi i ML word-count i regex header detekciju
   - Extractor se poziva per-kategorija za span localization
   - Consultant ima graceful fallback kad nema LLM klijenta

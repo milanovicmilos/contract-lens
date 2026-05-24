@@ -25,23 +25,25 @@ Standard "AI for legal" tools are black boxes. ContractLens replaces that with:
 
 ```
 src/
-├── domain/                          # Pure business logic
+├── domain/                          # Pure business logic (no infra deps)
 │   ├── contract.py                  # Contract aggregate + ContractMetadata + Clause
-│   └── risk_policy.py               # 41-category default policy with citation-aware justifications
-├── application/                     # Use cases (no infra dependencies)
+│   ├── risk_policy.py               # 41-category default policy with citation-aware justifications
+│   └── risk_score.py                # RiskScore value object (traceability fields)
+├── application/                     # Use cases + ports (no vendor SDKs)
 │   ├── generate_compliance_report.py
 │   ├── evaluation/
 │   │   └── evaluator.py             # LLMEvaluator (RAGAS faithfulness / relevancy)
+│   ├── orchestration/
+│   │   └── orchestrator.py          # LangGraph state machine — pipeline composition
 │   └── interfaces/
 │       ├── iclassifier.py
 │       ├── iextractor.py
-│       ├── illm_provider.py         # Strategy interface for LLM vendors
-│       ├── irisk_analyzer.py        # RiskScore + traceability fields
+│       ├── illm_provider.py         # Strategy port for LLM vendors
+│       ├── irisk_analyzer.py        # IRiskAnalyzer port (re-exports domain.RiskScore)
 │       └── ivector_db.py
-├── infrastructure/                  # Concrete implementations
-│   ├── agents/orchestrator.py       # LangGraph state machine
+├── infrastructure/                  # Concrete adapters
 │   ├── ai/
-│   │   ├── hf_classifier.py         # HuggingFace + PEFT loader
+│   │   ├── hf_classifier.py         # HuggingFace + PEFT adapter loader
 │   │   ├── deberta_extractor.py     # AutoModelForQuestionAnswering wrapper
 │   │   ├── train_classifier.py
 │   │   ├── train_extractor.py
@@ -126,11 +128,11 @@ explicitly.
 
 ## Architecture
 
-The state machine in `src/infrastructure/agents/orchestrator.py` runs four
-agents per chunk: Extractor → Validator → Legal Consultant (RAG + LLM) →
-Risk Auditor. Each step can degrade gracefully (no extractor, no LLM, empty
-RAG corpus) without breaking the pipeline. The full diagram set with the
-data-flow sequence diagram lives in [docs/arch.md](docs/arch.md).
+The state machine in `src/application/orchestration/orchestrator.py` runs
+four agents per chunk: Extractor → Validator → Legal Consultant (RAG + LLM)
+→ Risk Auditor. Each step can degrade gracefully (no extractor, no LLM,
+empty RAG corpus) without breaking the pipeline. The full diagram set with
+the data-flow sequence diagram lives in [docs/arch.md](docs/arch.md).
 
 ## Models and metrics
 
