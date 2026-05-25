@@ -44,9 +44,11 @@ HEADER_PATTERNS = [
     re.compile(r"^\s*[A-Z][A-Z\s]{4,}$"),  # all-caps headers
 ]
 
-# Classifier confidence cutoff. v8 produces well-spread sigmoid outputs (0.02-0.97
-# range observed); 0.55 trades a small amount of recall for noticeably better
-# precision (fewer false-positive risks emitted on unrelated chunks).
+# Global classifier confidence floor. Used when the classifier does not ship a
+# per-category thresholds.json (e.g., un-tuned HF Hub models). When the
+# classifier *does* expose ``per_category_thresholds`` the per-category value
+# is used instead — matching the conditions under which micro F1 = 0.688 was
+# measured in RESULTS.md §1.
 CLASSIFICATION_THRESHOLD = float(os.getenv("CLASSIFICATION_THRESHOLD", "0.55"))
 MIN_CLAUSE_WORDS = 8
 
@@ -117,6 +119,13 @@ class ContractOrchestrator:
         return workflow.compile()
 
     # --------------------------------------------------------------- helpers
+    def _threshold_for(self, category: str) -> float:
+        """Return the per-category threshold when the classifier exposes one, else the global."""
+        per_cat = getattr(self.classifier, "per_category_thresholds", None)
+        if per_cat and category in per_cat:
+            return per_cat[category]
+        return CLASSIFICATION_THRESHOLD
+
     @staticmethod
     def _is_header(text: str) -> bool:
         first_line = text.strip().splitlines()[0] if text.strip() else ""
@@ -133,7 +142,7 @@ class ContractOrchestrator:
             return {"classifications": {}, "extracted_spans": {}}
 
         classifications = self.classifier.classify(text)
-        positive_cats = {c: s for c, s in classifications.items() if s >= CLASSIFICATION_THRESHOLD}
+        positive_cats = {c: s for c, s in classifications.items() if s >= self._threshold_for(c)}
 
         spans: Dict[str, List[ExtractionResult]] = {}
         if self.extractor and positive_cats:
@@ -193,7 +202,7 @@ class ContractOrchestrator:
         """
         text = state.get("original_text", "")
         classifications = state.get("classifications", {}) or {}
-        positive_cats = {c: s for c, s in classifications.items() if s >= CLASSIFICATION_THRESHOLD}
+        positive_cats = {c: s for c, s in classifications.items() if s >= self._threshold_for(c)}
 
         rag_context: List[Dict[str, Any]] = []
         if self.vector_db is not None:
@@ -259,7 +268,7 @@ class ContractOrchestrator:
 
         final_risks: List[RiskScore] = []
         for category, conf in classifications.items():
-            if conf < CLASSIFICATION_THRESHOLD:
+            if conf < self._threshold_for(category):
                 continue
 
             level, policy_score, rule_justification = self.risk_policy.assess_risk(category, text)

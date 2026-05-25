@@ -16,6 +16,7 @@ we map them to the 41 CUAD category names so downstream policy lookups work.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from pathlib import Path
@@ -194,6 +195,36 @@ class HFClassifier(IClassifier):
             raise RuntimeError(f"Pipeline initialization failed: {exc}") from exc
 
         self.label_mapping = self._resolve_label_mapping(label_mapping)
+        self.per_category_thresholds: Optional[Dict[str, float]] = self._load_thresholds(
+            model_name_or_path
+        )
+
+    @staticmethod
+    def _load_thresholds(model_name_or_path: str) -> Optional[Dict[str, float]]:
+        """Load per-category F1-optimal thresholds saved alongside the model weights.
+
+        Returns None when the file is absent (plain HF Hub id or model trained
+        without threshold tuning). The orchestrator falls back to its global
+        ``CLASSIFICATION_THRESHOLD`` in that case, so behaviour is unchanged for
+        models that don't ship a ``thresholds.json``.
+        """
+        path = Path(model_name_or_path) / "thresholds.json"
+        if not path.exists():
+            return None
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                logger.warning("thresholds.json is not a dict — ignoring.")
+                return None
+            thresholds = {str(k): float(v) for k, v in data.items()}
+            logger.info(
+                "Loaded per-category thresholds from %s (%d categories).", path, len(thresholds)
+            )
+            return thresholds
+        except Exception as exc:
+            logger.warning("Could not load thresholds.json from %s: %s", path, exc)
+            return None
 
     def _resolve_label_mapping(self, override: Optional[List[str]]) -> Optional[Dict[str, str]]:
         """Build a 'LABEL_N -> human name' dict when applicable."""
