@@ -27,8 +27,9 @@ from langgraph.graph import END, START, StateGraph
 
 from src.application.interfaces.iclassifier import IClassifier
 from src.application.interfaces.iextractor import ExtractionResult, IExtractor
-from src.application.interfaces.illm_provider import ILLMProvider, LLMMessage
+from src.application.interfaces.illm_provider import ILLMProvider
 from src.application.interfaces.ivector_db import IVectorDatabase
+from src.application.llm_justifier import build_justifications
 from src.domain.risk_policy import RiskPolicy
 from src.domain.risk_score import RiskScore
 
@@ -61,6 +62,10 @@ class AgentState(TypedDict, total=False):
     validation_reason: str
     consultant_analysis: str
     rag_context: List[Dict[str, Any]]
+    # Per-category, RAG-grounded justifications from the LLM. Empty dict when
+    # llm_provider is None or the call failed; the auditor then falls back to
+    # the rule-based RiskPolicy justification per category.
+    llm_justifications: Dict[str, str]
     final_risks: List[RiskScore]
     metadata: Dict[str, Any]
 
@@ -171,71 +176,104 @@ class ContractOrchestrator:
         return "continue" if state.get("is_valid_clause", False) else "end"
 
     def _node_consult(self, state: AgentState) -> dict:
-        """Run RAG retrieval + LLM consultation, or fall back to rule-based note."""
+        """Retrieve RAG context, then build per-category grounded justifications via LLM.
+
+        Replaces the previous "single analysis blob appended to every risk"
+        approach with a structured per-category dict from
+        ``llm_justifier.build_justifications``. The change directly targets
+        the RAGAS faithfulness ceiling documented in
+        ``docs/RESULTS.md §3``.
+
+        Graceful degradation: when ``llm_provider`` is None, the LLM call
+        fails, or the JSON response is malformed, ``llm_justifications`` is
+        an empty dict and the auditor falls back to rule-based
+        justifications. We still emit the legacy ``consultant_analysis``
+        marker string so downstream callers / tests that inspect that field
+        keep working.
+        """
         text = state.get("original_text", "")
+        classifications = state.get("classifications", {}) or {}
+        positive_cats = {c: s for c, s in classifications.items() if s >= CLASSIFICATION_THRESHOLD}
 
         rag_context: List[Dict[str, Any]] = []
         if self.vector_db is not None:
             try:
-                rag_context = self.vector_db.search(text, top_k=3)
+                rag_context = self.vector_db.search(text, top_k=5)
             except Exception as exc:
                 logger.warning(f"RAG retrieval failed: {exc}")
 
         if self.llm_provider is None:
-            note = (
-                "Local rule-based analysis only (LLM provider not configured). "
-                "Review against policy keywords for risk indicators."
-            )
-            return {"consultant_analysis": note, "rag_context": rag_context}
+            return {
+                "consultant_analysis": (
+                    "Local rule-based analysis only (LLM provider not configured)."
+                ),
+                "rag_context": rag_context,
+                "llm_justifications": {},
+            }
 
-        context_block = ""
-        if rag_context:
-            snippets = "\n\n".join(
-                f"[{i + 1}] {r.get('text', '')[:500]}" for i, r in enumerate(rag_context)
-            )
-            context_block = f"\n\nRELEVANT REGULATIONS:\n{snippets}"
+        # Build the per-category map (category -> risk_level) so the LLM can
+        # tailor each justification. Falls back to "Medium" when the policy
+        # rule isn't registered for a category.
+        categories_with_levels: Dict[str, str] = {}
+        for cat in positive_cats:
+            level, _score, _just = self.risk_policy.assess_risk(cat, text)
+            categories_with_levels[cat] = level
 
-        system_prompt = (
-            "You are an expert legal consultant. Provide a concise "
-            "(1-2 sentences) analysis of the risks present in the following "
-            "contract clause. Cite specific regulations from RELEVANT REGULATIONS "
-            "when applicable. If the clause is standard and non-hazardous, say so."
+        llm_justifications = build_justifications(
+            llm_provider=self.llm_provider,
+            chunk_text=text,
+            categories_with_levels=categories_with_levels,
+            rag_context=rag_context,
         )
-        user_prompt = f"Clause text:\n\n{text}{context_block}"
 
-        try:
-            resp = self.llm_provider.chat(
-                [
-                    LLMMessage(role="system", content=system_prompt),
-                    LLMMessage(role="user", content=user_prompt),
-                ],
-                temperature=0.0,
-                max_tokens=200,
-            )
-            analysis = resp.content
-        except Exception as exc:
-            logger.warning(f"LLM consultation failed: {exc}; falling back to rule-based note.")
-            analysis = (
-                "LLM analysis unavailable due to runtime error. "
-                "Risk score reflects policy-based assessment only."
-            )
-
-        return {"consultant_analysis": analysis, "rag_context": rag_context}
+        return {
+            "consultant_analysis": (
+                f"LLM-grounded justifications produced for "
+                f"{len(llm_justifications)}/{len(positive_cats)} categories."
+            ),
+            "rag_context": rag_context,
+            "llm_justifications": llm_justifications,
+        }
 
     def _node_audit(self, state: AgentState) -> dict:
-        """Combine classifier, policy, extractor, and consultant outputs into RiskScores."""
+        """Combine classifier, policy, extractor, and consultant outputs into RiskScores.
+
+        Per-category justification source-of-truth:
+          1. If ``llm_justifications[category]`` exists, use that — it was
+             produced with the verbatim clause + RAG context and is what
+             lifts RAGAS faithfulness past the rule-based ceiling.
+          2. Otherwise, fall back to ``RiskPolicy.assess_risk`` (rule-based
+             template with verbatim keyword quote). The fallback is what
+             ships when llm_provider is None or the LLM call failed.
+
+        Risk level and score still come from the RiskPolicy — the LLM does
+        not get to invent risk levels. Only the explanation text is
+        substituted.
+        """
         text = state.get("original_text", "")
         source_doc = state.get("source_doc")
         classifications = state.get("classifications", {}) or {}
         spans = state.get("extracted_spans", {}) or {}
-        analysis = state.get("consultant_analysis", "") or ""
+        llm_justifications: Dict[str, str] = state.get("llm_justifications", {}) or {}
+        rag_hits = len(state.get("rag_context", []) or [])
 
         final_risks: List[RiskScore] = []
         for category, conf in classifications.items():
             if conf < CLASSIFICATION_THRESHOLD:
                 continue
 
-            level, policy_score, justification = self.risk_policy.assess_risk(category, text)
+            level, policy_score, rule_justification = self.risk_policy.assess_risk(category, text)
+
+            # Prefer the LLM-grounded justification when present; otherwise
+            # fall back to the rule-based template. Metadata records which
+            # path produced the text so downstream analytics can attribute.
+            llm_text = llm_justifications.get(category, "").strip()
+            if llm_text:
+                justification = llm_text
+                justification_source = "llm"
+            else:
+                justification = rule_justification
+                justification_source = "rule"
 
             category_spans = spans.get(category, [])
             if category_spans:
@@ -248,20 +286,17 @@ class ContractOrchestrator:
                 span_start = None
                 span_end = None
 
-            enhanced_justification = (
-                f"{justification} Consultant Note: {analysis}" if analysis else justification
-            )
-
             final_risks.append(
                 RiskScore(
                     category=category,
                     risk_level=level,
                     score=policy_score,
-                    justification=enhanced_justification,
+                    justification=justification,
                     extracted_span=extracted_span_text,
                     metadata={
                         "classifier_confidence": conf,
-                        "rag_hits": len(state.get("rag_context", []) or []),
+                        "rag_hits": rag_hits,
+                        "justification_source": justification_source,
                     },
                     span_start_offset=span_start,
                     span_end_offset=span_end,
@@ -279,6 +314,7 @@ class ContractOrchestrator:
             "source_doc": source_doc,
             "classifications": {},
             "extracted_spans": {},
+            "llm_justifications": {},
             "is_valid_clause": False,
             "validation_reason": "",
             "consultant_analysis": "",

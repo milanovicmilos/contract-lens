@@ -1,0 +1,605 @@
+{
+  "config": {
+    "classifier_model": "models/deberta-cuad-classifier",
+    "eval_model": "gpt-4o-mini",
+    "max_contracts": 3,
+    "chunk_size": 2000,
+    "n_contracts_processed": 3,
+    "n_risks_emitted": 172,
+    "llm_judge_enabled": true
+  },
+  "aggregate": {
+    "faithfulness": {
+      "n": 172,
+      "mean": 0.5133720930232558,
+      "median": 0.7,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "relevancy": {
+      "n": 172,
+      "mean": 0.40058139534883724,
+      "median": 0.5,
+      "min": 0.0,
+      "max": 1.0
+    }
+  },
+  "per_category": {
+    "Affiliate License-Licensee": {
+      "faithfulness": {
+        "n": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "relevancy": {
+        "n": 1,
+        "mean": 1.0,
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0
+      }
+    },
+    "Agreement Date": {
+      "faithfulness": {
+        "n": 2,
+        "mean": 0.5,
+        "median": 0.5,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 2,
+        "mean": 0.25,
+        "median": 0.25,
+        "min": 0.0,
+        "max": 0.5
+      }
+    },
+    "Anti-Assignment": {
+      "faithfulness": {
+        "n": 5,
+        "mean": 0.8,
+        "median": 1.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 5,
+        "mean": 0.7,
+        "median": 1.0,
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "Audit Rights": {
+      "faithfulness": {
+        "n": 19,
+        "mean": 0.23157894736842108,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 19,
+        "mean": 0.05263157894736842,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "Cap On Liability": {
+      "faithfulness": {
+        "n": 11,
+        "mean": 0.7636363636363637,
+        "median": 0.9,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 11,
+        "mean": 0.5,
+        "median": 0.5,
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "Change Of Control": {
+      "faithfulness": {
+        "n": 6,
+        "mean": 0.7833333333333333,
+        "median": 1.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 6,
+        "mean": 0.5,
+        "median": 0.5,
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "Competitive Restriction Exception": {
+      "faithfulness": {
+        "n": 4,
+        "mean": 0.75,
+        "median": 1.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 4,
+        "mean": 0.375,
+        "median": 0.25,
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "Covenant Not To Sue": {
+      "faithfulness": {
+        "n": 2,
+        "mean": 0.85,
+        "median": 0.85,
+        "min": 0.7,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 2,
+        "mean": 0.5,
+        "median": 0.5,
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "Document Name": {
+      "faithfulness": {
+        "n": 1,
+        "mean": 0.7,
+        "median": 0.7,
+        "min": 0.7,
+        "max": 0.7
+      },
+      "relevancy": {
+        "n": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      }
+    },
+    "Effective Date": {
+      "faithfulness": {
+        "n": 2,
+        "mean": 0.85,
+        "median": 0.85,
+        "min": 0.7,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 2,
+        "mean": 0.75,
+        "median": 0.75,
+        "min": 0.5,
+        "max": 1.0
+      }
+    },
+    "Exclusivity": {
+      "faithfulness": {
+        "n": 5,
+        "mean": 0.72,
+        "median": 0.8,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 5,
+        "mean": 0.96,
+        "median": 1.0,
+        "min": 0.8,
+        "max": 1.0
+      }
+    },
+    "Expiration Date": {
+      "faithfulness": {
+        "n": 6,
+        "mean": 0.7999999999999999,
+        "median": 1.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 6,
+        "mean": 0.16666666666666666,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.5
+      }
+    },
+    "Governing Law": {
+      "faithfulness": {
+        "n": 6,
+        "mean": 0.45,
+        "median": 0.35,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 6,
+        "mean": 0.5,
+        "median": 0.5,
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "Insurance": {
+      "faithfulness": {
+        "n": 3,
+        "mean": 0.3333333333333333,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 3,
+        "mean": 0.6666666666666666,
+        "median": 1.0,
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "Ip Ownership Assignment": {
+      "faithfulness": {
+        "n": 4,
+        "mean": 0.725,
+        "median": 0.95,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 4,
+        "mean": 0.5,
+        "median": 0.5,
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "Joint Ip Ownership": {
+      "faithfulness": {
+        "n": 1,
+        "mean": 1.0,
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      }
+    },
+    "License Grant": {
+      "faithfulness": {
+        "n": 3,
+        "mean": 1.0,
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 3,
+        "mean": 0.8333333333333334,
+        "median": 1.0,
+        "min": 0.5,
+        "max": 1.0
+      }
+    },
+    "Liquidated Damages": {
+      "faithfulness": {
+        "n": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "relevancy": {
+        "n": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      }
+    },
+    "Minimum Commitment": {
+      "faithfulness": {
+        "n": 11,
+        "mean": 0.5,
+        "median": 0.8,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 11,
+        "mean": 0.36363636363636365,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "No-Solicit Of Customers": {
+      "faithfulness": {
+        "n": 2,
+        "mean": 1.0,
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 2,
+        "mean": 0.75,
+        "median": 0.75,
+        "min": 0.5,
+        "max": 1.0
+      }
+    },
+    "No-Solicit Of Employees": {
+      "faithfulness": {
+        "n": 2,
+        "mean": 1.0,
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 2,
+        "mean": 0.75,
+        "median": 0.75,
+        "min": 0.5,
+        "max": 1.0
+      }
+    },
+    "Non-Compete": {
+      "faithfulness": {
+        "n": 3,
+        "mean": 0.5666666666666667,
+        "median": 0.7,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 3,
+        "mean": 0.5,
+        "median": 0.5,
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "Non-Disparagement": {
+      "faithfulness": {
+        "n": 1,
+        "mean": 0.7,
+        "median": 0.7,
+        "min": 0.7,
+        "max": 0.7
+      },
+      "relevancy": {
+        "n": 1,
+        "mean": 0.5,
+        "median": 0.5,
+        "min": 0.5,
+        "max": 0.5
+      }
+    },
+    "Non-Transferable License": {
+      "faithfulness": {
+        "n": 3,
+        "mean": 0.6666666666666666,
+        "median": 1.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 3,
+        "mean": 0.5,
+        "median": 0.5,
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "Notice Period To Terminate Renewal": {
+      "faithfulness": {
+        "n": 4,
+        "mean": 0.25,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 4,
+        "mean": 0.5,
+        "median": 0.5,
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "Parties": {
+      "faithfulness": {
+        "n": 1,
+        "mean": 0.7,
+        "median": 0.7,
+        "min": 0.7,
+        "max": 0.7
+      },
+      "relevancy": {
+        "n": 1,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      }
+    },
+    "Post-Termination Services": {
+      "faithfulness": {
+        "n": 10,
+        "mean": 0.53,
+        "median": 0.65,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 10,
+        "mean": 0.53,
+        "median": 0.5,
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "Price Restrictions": {
+      "faithfulness": {
+        "n": 1,
+        "mean": 0.9,
+        "median": 0.9,
+        "min": 0.9,
+        "max": 0.9
+      },
+      "relevancy": {
+        "n": 1,
+        "mean": 1.0,
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0
+      }
+    },
+    "Renewal Term": {
+      "faithfulness": {
+        "n": 5,
+        "mean": 0.4,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 5,
+        "mean": 0.5,
+        "median": 0.5,
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "Revenue/Profit Sharing": {
+      "faithfulness": {
+        "n": 8,
+        "mean": 0.125,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 8,
+        "mean": 0.3125,
+        "median": 0.25,
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "Rofr/Rofo/Rofn": {
+      "faithfulness": {
+        "n": 7,
+        "mean": 0.32857142857142857,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 7,
+        "mean": 0.14285714285714285,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "Termination For Convenience": {
+      "faithfulness": {
+        "n": 6,
+        "mean": 0.3833333333333333,
+        "median": 0.15,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 6,
+        "mean": 0.16666666666666666,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.5
+      }
+    },
+    "Third Party Beneficiary": {
+      "faithfulness": {
+        "n": 2,
+        "mean": 0.5,
+        "median": 0.5,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 2,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      }
+    },
+    "Uncapped Liability": {
+      "faithfulness": {
+        "n": 5,
+        "mean": 0.4,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 5,
+        "mean": 0.6,
+        "median": 0.5,
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "Volume Restriction": {
+      "faithfulness": {
+        "n": 7,
+        "mean": 0.48571428571428577,
+        "median": 0.8,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 7,
+        "mean": 0.4714285714285714,
+        "median": 0.5,
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "Warranty Duration": {
+      "faithfulness": {
+        "n": 12,
+        "mean": 0.325,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "relevancy": {
+        "n": 12,
+        "mean": 0.25,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      }
+    }
+  }
+}

@@ -15,9 +15,13 @@ Standard "AI for legal" tools are black boxes. ContractLens replaces that with:
 - **Traceability** — every emitted `RiskScore` carries a `(span_start_offset,
   span_end_offset, source_doc)` triple. JSON and PDF compliance reports
   embed the same citations the policy engine used.
-- **41 CUAD risk categories** — multi-label DeBERTa-v3-base fine-tuned on
-  18 k windows + tuned per-class thresholds (Tuned micro F1 = 0.66, macro F1
-  = 0.53 — see [docs/RESULTS.md](docs/RESULTS.md)).
+- **41 CUAD risk categories** — multi-label DeBERTa-v3-base + LoRA (r=64) fine-tuned on
+  18 k windows + tuned per-class thresholds (**v9.2**: tuned micro F1 = **0.688**, macro F1
+  = **0.579** — see [docs/RESULTS.md](docs/RESULTS.md)).
+- **RAGAS-graded LLM justifications** — every risk's explanation cites a
+  specific RAG-retrieved article and quotes the source clause verbatim.
+  v3 pipeline run: **faithfulness mean 0.513 / median 0.700** on 3 real
+  CUAD contracts with GPT-4o-mini as judge.
 - **Clean architecture** — Domain / Application / Infrastructure separation,
   Strategy pattern for LLM providers, Factory pattern for document parsers.
 
@@ -178,10 +182,10 @@ categories work well and which do not.
 
 | Component | Status |
 |-----------|--------|
-| v8 classifier (DeBERTa-v3-base + LoRA, 41 categories) | Tuned micro F1 = 0.662, macro F1 = 0.534 |
-| v7 extractor (DeBERTa-v3-base QA) | Undertrained (5% of one epoch); kept disabled by default |
+| **v9.2 classifier** (DeBERTa-v3-base + LoRA r=64, 41 categories) | Tuned **micro F1 = 0.688, macro F1 = 0.579** (22/41 categories above F1 0.60) |
+| v8 extractor (DeBERTa-v3-base init from `deepset/deberta-v3-base-squad2`) | Trained, token-F1 = 0.277 — disabled by default; see RESULTS.md §2 |
 | Local RAG corpus | **48 article-level entries** (GDPR ×20, EU AI Act ×13, Practice Notes ×15) under `data/legal_corpus/*.jsonl`; seed via `scripts/seed_legal_corpus.py` |
-| RAGAS faithfulness | See `docs/ragas_eval_report*.json` |
+| **RAGAS faithfulness (v3 pipeline)** | mean = **0.513**, median = **0.700** on 3 CUAD contracts (was 0.231 in v2) |
 
 ## LLM provider — OpenAI by default, swappable
 
