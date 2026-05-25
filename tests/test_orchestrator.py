@@ -68,7 +68,10 @@ def test_orchestrator_valid_flow_with_extractor(mock_classifier, mock_extractor,
     assert risk.span_start_offset == 5
     assert risk.span_end_offset == 26
     assert risk.source_doc == "test_contract.pdf"
-    assert "Local rule-based" in risk.justification  # graceful LLM fallback message
+    # No LLM provider → justification source must be the rule-based RiskPolicy
+    # template, not an LLM rewrite.
+    assert risk.metadata["justification_source"] == "rule"
+    assert "immediately" in risk.justification  # rule template quotes the keyword
     mock_extractor.extract.assert_called_once()
 
 
@@ -118,10 +121,19 @@ def test_orchestrator_skips_extractor_when_not_provided(mock_classifier, risk_po
 
 
 def test_orchestrator_invokes_llm_when_provided(mock_classifier, mock_extractor, risk_policy):
-    """When an LLM provider is supplied, its analysis must reach the RiskScore."""
+    """When an LLM provider is supplied with a valid structured JSON response,
+    the per-category justification must reach the RiskScore and supersede the
+    rule-based template.
+    """
+    # build_justifications expects a JSON-mode response shaped as
+    # {"justifications": {"<category>": "<text>"}}.
     mock_provider = MagicMock()
     mock_provider.chat.return_value = LLMResponse(
-        content="This clause permits convenience termination with no notice.",
+        content=(
+            '{"justifications": {"Termination For Convenience": '
+            '"Per common-law practice on T4C, the clause \\"terminate immediately\\" '
+            'allows ending the agreement on no notice."}}'
+        ),
         model="fake",
     )
 
@@ -136,5 +148,9 @@ def test_orchestrator_invokes_llm_when_provided(mock_classifier, mock_extractor,
     risks = orchestrator.analyze(text)
 
     assert len(risks) == 1
-    assert "permits convenience termination" in risks[0].justification
+    risk = risks[0]
+    # LLM justification wins over the rule-based template
+    assert risk.metadata["justification_source"] == "llm"
+    assert "terminate immediately" in risk.justification
+    assert "common-law practice" in risk.justification
     mock_provider.chat.assert_called_once()
