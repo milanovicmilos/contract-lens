@@ -142,9 +142,7 @@ class ContractOrchestrator:
             return {"classifications": {}, "extracted_spans": {}}
 
         classifications = self.classifier.classify(text)
-        positive_cats = {
-            c: s for c, s in classifications.items() if s >= self._threshold_for(c)
-        }
+        positive_cats = {c: s for c, s in classifications.items() if s >= self._threshold_for(c)}
 
         spans: Dict[str, List[ExtractionResult]] = {}
         if self.extractor and positive_cats:
@@ -204,9 +202,7 @@ class ContractOrchestrator:
         """
         text = state.get("original_text", "")
         classifications = state.get("classifications", {}) or {}
-        positive_cats = {
-            c: s for c, s in classifications.items() if s >= self._threshold_for(c)
-        }
+        positive_cats = {c: s for c, s in classifications.items() if s >= self._threshold_for(c)}
 
         rag_context: List[Dict[str, Any]] = []
         if self.vector_db is not None:

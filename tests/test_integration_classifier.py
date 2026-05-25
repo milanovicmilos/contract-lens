@@ -49,8 +49,7 @@ def real_classifier():
     """
     if not MODEL_DIR.exists() or not (MODEL_DIR / "config.json").exists():
         pytest.skip(
-            f"Real v9.2 model not found at {MODEL_DIR}. "
-            "Run 'inv pull-models' to download it."
+            f"Real v9.2 model not found at {MODEL_DIR}. " "Run 'inv pull-models' to download it."
         )
     from src.infrastructure.ai.hf_classifier import HFClassifier
 
@@ -86,12 +85,12 @@ def test_thresholds_cover_all_41_categories():
 @pytest.mark.integration
 def test_hf_classifier_loads_per_category_thresholds(real_classifier):
     """After loading the model the classifier must expose per_category_thresholds."""
-    assert real_classifier.per_category_thresholds is not None, (
-        "HFClassifier did not load thresholds.json"
-    )
-    assert len(real_classifier.per_category_thresholds) == 41, (
-        f"Expected 41 thresholds, got {len(real_classifier.per_category_thresholds)}"
-    )
+    assert (
+        real_classifier.per_category_thresholds is not None
+    ), "HFClassifier did not load thresholds.json"
+    assert (
+        len(real_classifier.per_category_thresholds) == 41
+    ), f"Expected 41 thresholds, got {len(real_classifier.per_category_thresholds)}"
 
 
 @pytest.mark.integration
@@ -103,12 +102,12 @@ def test_hf_classifier_label_mapping_applied(real_classifier):
         "This Agreement shall be governed by the laws of the State of Delaware."
     )
     for key in scores:
-        assert not key.startswith("LABEL_"), (
-            f"label_mapping not applied — raw label '{key}' leaked into output"
-        )
-    assert set(scores.keys()).issubset(set(CUAD_CATEGORIES)), (
-        f"Unknown category names in output: {set(scores.keys()) - set(CUAD_CATEGORIES)}"
-    )
+        assert not key.startswith(
+            "LABEL_"
+        ), f"label_mapping not applied — raw label '{key}' leaked into output"
+    assert set(scores.keys()).issubset(
+        set(CUAD_CATEGORIES)
+    ), f"Unknown category names in output: {set(scores.keys()) - set(CUAD_CATEGORIES)}"
 
 
 # ---------------------------------------------------------------------------
@@ -173,9 +172,9 @@ def test_canonical_clause_scores_above_tuned_threshold(real_classifier, category
     threshold = thresholds.get(category, 0.55)
 
     scores = real_classifier.classify(clause)
-    assert category in scores, (
-        f"Category '{category}' absent from output dict — label mapping may be broken."
-    )
+    assert (
+        category in scores
+    ), f"Category '{category}' absent from output dict — label mapping may be broken."
     score = scores[category]
     assert score >= threshold, (
         f"'{category}' scored {score:.4f} < tuned threshold {threshold:.4f} "
@@ -242,9 +241,7 @@ def test_orchestrator_e2e_with_real_classifier(real_classifier):
     categories = {r.category for r in risks}
     # At least one of these three canonical categories must be detected
     expected = {"Cap On Liability", "Governing Law", "Termination For Convenience"}
-    assert categories & expected, (
-        f"None of {expected} detected; got {categories}"
-    )
+    assert categories & expected, f"None of {expected} detected; got {categories}"
 
 
 @pytest.mark.integration
@@ -255,9 +252,9 @@ def test_orchestrator_uses_per_category_thresholds(real_classifier):
     from src.application.orchestration.orchestrator import ContractOrchestrator
     from src.domain.risk_policy import RiskPolicy
 
-    assert real_classifier.per_category_thresholds is not None, (
-        "Precondition: classifier must have per_category_thresholds loaded."
-    )
+    assert (
+        real_classifier.per_category_thresholds is not None
+    ), "Precondition: classifier must have per_category_thresholds loaded."
 
     orch = ContractOrchestrator(classifier=real_classifier, risk_policy=RiskPolicy())
 
@@ -285,9 +282,9 @@ def test_orchestrator_justification_source_rule_without_llm(real_classifier):
     if not cap_risks:
         pytest.skip("Cap On Liability not detected — threshold may have changed.")
     for r in cap_risks:
-        assert r.metadata.get("justification_source") == "rule", (
-            f"Expected 'rule' justification source, got {r.metadata.get('justification_source')}"
-        )
+        assert (
+            r.metadata.get("justification_source") == "rule"
+        ), f"Expected 'rule' justification source, got {r.metadata.get('justification_source')}"
 
 
 @pytest.mark.integration
