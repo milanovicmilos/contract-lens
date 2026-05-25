@@ -223,7 +223,34 @@ invocations shown alongside.
 | Start API server | `inv api` | `uvicorn src.api.main:app` |
 | Full CI quality gates | `inv ci` | `black --check + ruff check + pytest + bandit` |
 
-## 5. Open Kaggle artifacts
+## 5. Baseline Comparison
+
+ContractLens v9.2 is benchmarked against a keyword / regex lower bound on the
+same 1 817-window eval split used during Kaggle training (seed=42, test_size=0.1).
+
+| System | Micro F1 | Macro F1 | Notes |
+|--------|----------|----------|-------|
+| Keyword regex (no ML) | 0.436 | 0.303 | `KeywordClassifier` — hand-crafted patterns per category |
+| **ContractLens v9.2 DeBERTa** | **0.688** | **0.579** | Per-category tuned thresholds from `thresholds.json` |
+
+**v9.2 lifts micro F1 by +25.2 pp (+58% relative) over the keyword baseline.**
+The largest gains are on semantically complex low-frequency categories
+(Notice Period To Terminate Renewal +47 pp, Third Party Beneficiary +33 pp,
+Irrevocable Or Perpetual License +34 pp).  High-frequency, lexically obvious
+categories (Parties, Agreement Date) are near-saturated by regex alone.
+
+Full per-category breakdown, methodology, and literature comparison:
+[docs/baseline_comparison.md](baseline_comparison.md)
+
+Reproducible via:
+
+```bash
+python scripts/evaluate_baselines.py
+```
+
+Report saved to `docs/baseline_eval_report.json`.
+
+## 6. Open Kaggle artifacts
 
 - Datasets: `milomilanovi/contractlens-cuad-multilabel`,
   `milomilanovi/contractlens-cuad-squad` (CC-BY-4.0)
