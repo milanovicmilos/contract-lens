@@ -97,8 +97,8 @@ All three commands must pass — `.github/workflows/ci.yml` runs the same ones.
 ### 3. Analyse a contract end-to-end
 
 ```bash
-# Populate the local RAG store (one-off)
-python scripts/seed_regulations.py
+# Populate the local RAG store (one-off — 48 article-level entries)
+python scripts/seed_legal_corpus.py
 
 # Parse a contract, classify, render compliance reports
 python scripts/demo_e2e.py "CUAD_v1/full_contract_txt/<some_contract>.txt"
@@ -171,7 +171,7 @@ categories work well and which do not.
 |-----------|--------|
 | v8 classifier (DeBERTa-v3-base + LoRA, 41 categories) | Tuned micro F1 = 0.662, macro F1 = 0.534 |
 | v7 extractor (DeBERTa-v3-base QA) | Undertrained (5% of one epoch); kept disabled by default |
-| Local RAG (GDPR + EU AI Act + practice notes) | 12 seeded snippets |
+| Local RAG corpus | **48 article-level entries** (GDPR ×20, EU AI Act ×13, Practice Notes ×15) under `data/legal_corpus/*.jsonl`; seed via `scripts/seed_legal_corpus.py` |
 | RAGAS faithfulness | See `docs/ragas_eval_report*.json` |
 
 ## LLM provider — OpenAI by default, swappable
