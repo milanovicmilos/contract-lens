@@ -200,7 +200,13 @@ src/
 └── data/
     ├── cuad_loader.py                   # CUAD JSON + CSV ingest
     ├── document_normalizer.py           # PDF/DOCX -> markdown
-    └── sliding_window.py                # overlapping chunk tokenization
+    ├── sliding_window.py                # overlapping chunk tokenization
+    └── legal_corpus.py                  # JSONL loader for the RAG knowledge base
+
+data/legal_corpus/
+├── gdpr.jsonl                           # 20 GDPR articles (per-article entries)
+├── eu_ai_act.jsonl                      # 13 EU AI Act provisions
+└── practice_notes.jsonl                 # 15 contract-practice principles
 
 scripts/
 ├── analyze_cuad_structure.py

@@ -165,6 +165,11 @@ four agents per chunk: Extractor → Validator → Legal Consultant (RAG + LLM)
 empty RAG corpus) without breaking the pipeline. The full diagram set with
 the data-flow sequence diagram lives in [docs/arch.md](docs/arch.md).
 
+The **why** behind the load-bearing architectural choices —
+Clean Architecture + LangGraph, LoRA on -base, OpenAI behind a Strategy
+port, SQLite-backed jobs, traceability via extractor spans, JSONL RAG
+corpus — is documented as [Architecture Decision Records](docs/adr/).
+
 ## Models and metrics
 
 See [docs/RESULTS.md](docs/RESULTS.md) for the complete F1 tables, RAGAS
@@ -175,7 +180,7 @@ categories work well and which do not.
 |-----------|--------|
 | v8 classifier (DeBERTa-v3-base + LoRA, 41 categories) | Tuned micro F1 = 0.662, macro F1 = 0.534 |
 | v7 extractor (DeBERTa-v3-base QA) | Undertrained (5% of one epoch); kept disabled by default |
-| Local RAG (GDPR + EU AI Act + practice notes) | 12 seeded snippets |
+| Local RAG corpus | **48 article-level entries** (GDPR ×20, EU AI Act ×13, Practice Notes ×15) under `data/legal_corpus/*.jsonl`; seed via `scripts/seed_legal_corpus.py` |
 | RAGAS faithfulness | See `docs/ragas_eval_report*.json` |
 
 ## LLM provider — OpenAI by default, swappable
