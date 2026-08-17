@@ -53,6 +53,7 @@ venv/
 ENV/
 env/
 .venv
+.venv-ci-check/
 
 # IDEs
 .vscode/
@@ -118,3 +119,24 @@ volumes/
 # Compiled documentation
 site/
 docs/_build/
+
+# Claude Code per-developer settings
+.claude/
+
+# Local Chroma vector store (regenerated via scripts/seed_legal_corpus.py)
+chroma_db/
+
+# Local job state for the async upload endpoint (SQLite, ephemeral per env)
+data/jobs.sqlite
+data/jobs.sqlite-*
+
+# Generated compliance reports — kept out of git, written into reports/ at runtime
+reports/
+
+# Local trained model artifacts (pulled from Kaggle via scripts/pull_kaggle_models.py)
+models/
+!models/MANIFEST.json
+
+# Kaggle dataset staging (data files, not metadata/scripts)
+kaggle/datasets/*/cuad_*.jsonl
+kaggle/datasets/*/*.zip

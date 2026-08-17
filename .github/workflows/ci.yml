@@ -1,0 +1,116 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - development
+  pull_request:
+    branches:
+      - main
+      - development
+
+jobs:
+  lint-and-format:
+    runs-on: ubuntu-latest
+    name: Lint & Format Check
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff black pytest pytest-cov
+
+      - name: Check formatting with Black
+        run: black --check src tests
+
+      - name: Lint with Ruff
+        run: ruff check src tests
+
+  tests:
+    runs-on: ubuntu-latest
+    name: Unit & Integration Tests
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt 2>/dev/null || pip install pytest pytest-cov
+
+      - name: Run tests with coverage
+        run: |
+          pytest tests/ --cov=src --cov-report=term-missing --cov-report=xml -v
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage.xml
+          flags: unittests
+          fail_ci_if_error: false
+
+  security-scan:
+    runs-on: ubuntu-latest
+    name: Security Scan
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Bandit
+        run: pip install "bandit[toml]"
+
+      - name: Run Bandit security scan
+        # Config and skip list live in pyproject.toml [tool.bandit].
+        # Fails the build on Medium+ findings (-ll).
+        run: bandit -r src -c pyproject.toml -ll
+
+  build-docker:
+    runs-on: ubuntu-latest
+    name: Build Docker Image (optional)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build Docker image (dry-run)
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: false
+          tags: contract-lens:latest
+
+  status-check:
+    runs-on: ubuntu-latest
+    name: Overall Status
+    needs: [lint-and-format, tests, security-scan]
+    if: always()
+    steps:
+      - name: Check job status
+        run: |
+          if [[ "${{ needs.lint-and-format.result }}" == "failure" || \
+                "${{ needs.tests.result }}" == "failure" || \
+                "${{ needs.security-scan.result }}" == "failure" ]]; then
+            echo "❌ CI/CD pipeline failed"
+            exit 1
+          else
+            echo "✅ All checks passed"
+          fi

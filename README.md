@@ -1,0 +1,216 @@
+# ContractLens — Enterprise Legal AI Orchestrator
+
+Hybrid system for automated legal risk analysis that combines a locally-trained
+DeBERTa classifier with a multi-agent RAG pipeline. Every Risk Score is traced
+back to a verbatim quote from the source contract, so the legal reviewer can
+audit the model's reasoning end-to-end.
+
+## Why this project
+
+Standard "AI for legal" tools are black boxes. ContractLens replaces that with:
+
+- **Privacy-first inference** — contracts never leave the box; only validated,
+  redacted clauses can be sent to the cloud LLM, and the cloud step is fully
+  optional (`DISABLE_LLM=1`).
+- **Traceability** — every emitted `RiskScore` carries a `(span_start_offset,
+  span_end_offset, source_doc)` triple. JSON and PDF compliance reports
+  embed the same citations the policy engine used.
+- **41 CUAD risk categories** — multi-label DeBERTa-v3-base + LoRA (r=64) fine-tuned on
+  18 k windows + tuned per-class thresholds (**v9.2**: tuned micro F1 = **0.688**, macro F1
+  = **0.579** — see [docs/RESULTS.md](docs/RESULTS.md)).
+- **RAGAS-graded LLM justifications** — every risk's explanation cites a
+  specific RAG-retrieved article and quotes the source clause verbatim.
+  v3 pipeline run: **faithfulness mean 0.513 / median 0.700** on 3 real
+  CUAD contracts with GPT-4o-mini as judge.
+- **Clean architecture** — Domain / Application / Infrastructure separation,
+  Strategy pattern for LLM providers, Factory pattern for document parsers.
+
+## Project layout
+
+```
+src/
+├── domain/                          # Pure business logic (no infra deps)
+│   ├── contract.py                  # Contract aggregate + ContractMetadata + Clause
+│   ├── risk_policy.py               # 41-category default policy with citation-aware justifications
+│   └── risk_score.py                # RiskScore value object (traceability fields)
+├── application/                     # Use cases + ports (no vendor SDKs)
+│   ├── generate_compliance_report.py
+│   ├── evaluation/
+│   │   └── evaluator.py             # LLMEvaluator (RAGAS faithfulness / relevancy)
+│   ├── orchestration/
+│   │   └── orchestrator.py          # LangGraph state machine — pipeline composition
+│   └── interfaces/
+│       ├── iclassifier.py
+│       ├── iextractor.py
+│       ├── illm_provider.py         # Strategy port for LLM vendors
+│       ├── irisk_analyzer.py        # IRiskAnalyzer port (re-exports domain.RiskScore)
+│       └── ivector_db.py
+├── infrastructure/                  # Concrete adapters
+│   ├── ai/
+│   │   ├── hf_classifier.py         # HuggingFace + PEFT adapter loader
+│   │   ├── deberta_extractor.py     # AutoModelForQuestionAnswering wrapper
+│   │   ├── train_classifier.py
+│   │   ├── train_extractor.py
+│   │   └── kaggle_train_lora.py
+│   ├── database/chroma_wrapper.py
+│   ├── llm/openai_provider.py       # Strategy impl using openai>=1.0
+│   └── reporting/pdf_renderer.py    # reportlab-based PDF compliance report
+├── data/                            # Document normalization + sliding window
+│   ├── document_normalizer.py       # Factory + TXT/MD/PDF/DOCX implementations
+│   ├── sliding_window.py
+│   └── cuad_loader.py
+├── evaluation/
+│   └── ragas_eval.py                # Batch RAGAS evaluation harness
+└── api/
+    └── main.py                      # FastAPI: /api/v1/analyze, /api/v1/report, /health
+
+scripts/
+├── prepare_multilabel_dataset.py    # CUAD SQuAD -> multi-label JSONL
+├── seed_regulations.py              # Populate ChromaDB with regulatory snippets
+├── pull_kaggle_models.py            # Download trained artifacts via kaggle CLI
+└── demo_e2e.py                      # Parse PDF/DOCX/TXT -> JSON + PDF compliance report
+
+kaggle/
+├── kernels/{classifier,extractor}/  # Standalone Kaggle scripts (push via kaggle CLI)
+└── datasets/{cuad-multilabel,cuad-squad}/dataset-metadata.json
+```
+
+## Quickstart
+
+Three commands from clone to analysed contract:
+
+```bash
+git clone https://github.com/milanovicmilos/contract-lens.git && cd contract-lens
+python -m venv .venv && .venv/Scripts/activate   # PowerShell: .\.venv\Scripts\Activate.ps1
+inv install
+inv seed
+inv demo --contract CUAD_v1/full_contract_txt/<some_contract>.txt
+```
+
+Outputs land in `reports/<stem>_compliance.json` and
+`reports/<stem>_compliance.pdf`. `inv` is the project task runner
+(cross-platform, replaces `make`); `inv --list` shows every target.
+
+### Common workflows via `inv`
+
+| Goal | Command |
+|---|---|
+| Install dev deps | `inv install` |
+| Seed RAG corpus | `inv seed` |
+| Run an end-to-end demo on one contract | `inv demo --contract <path>` |
+| Start the API server | `inv api` |
+| Run CI checks locally (lint + tests + security) | `inv ci` |
+| Format code (black + ruff --fix) | `inv format` |
+| Run RAGAS evaluation | `inv eval --max-contracts 3` |
+| Train classifier locally (small model) | `inv train-classifier` |
+| Pull Kaggle-trained models | `inv pull-models` |
+| Pre-release sanity check (CI + clean tree) | `inv release-check` |
+
+CI runs the same three quality gates (`inv ci`):
+
+```bash
+inv lint        # black --check + ruff check
+inv test        # pytest with coverage
+inv security    # bandit scan, fails on Medium+ findings
+```
+
+### 4. Start the API server
+
+```bash
+export CLASSIFIER_MODEL=models/deberta-cuad-classifier
+export CHROMA_DIR=./chroma_db
+# Generate a real API key once and set it in your env:
+export CONTRACTLENS_API_KEYS=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
+uvicorn src.api.main:app --reload
+```
+
+Endpoints:
+
+| Method | Path | Body | Purpose |
+|--------|------|------|---------|
+| POST | `/api/v1/contracts` | multipart `file=<pdf\|docx\|txt\|md>` | Accept upload, run analysis in background, return `{job_id, status, status_url}` (202) |
+| GET | `/api/v1/jobs/{job_id}` | — | Poll job status (`pending`/`running`/`completed`/`failed`); returns the RiskScore list on completion |
+| POST | `/api/v1/analyze` | `{text, source_doc?}` | Synchronous; list of `RiskScoreResponse` (suited to short clauses only) |
+| POST | `/api/v1/report` | `{text, source_doc?, format: "json"\|"pdf"}` | Compliance report path + summary |
+| GET | `/health` | — | Readiness probe (no auth) |
+| GET | `/metrics` | — | Prometheus exposition (no auth; disable with `METRICS_ENABLED=0`) |
+
+All `/api/v1/*` routes require an `X-API-Key: <value>` header matching one
+of `CONTRACTLENS_API_KEYS` (comma-separated). For local dev / CI you may
+set `API_AUTH_DISABLED=1` — the server logs a loud WARNING when this is on.
+
+The async upload flow is the right path for any contract longer than a
+few clauses: the synchronous `/analyze` endpoint will time out on full
+PDFs. `/api/v1/contracts` writes the job to a SQLite store
+(`JOBS_DB_PATH`, default `data/jobs.sqlite`) and processes it in a
+ThreadPoolExecutor (`JOB_WORKERS`, default 2). **Single-process only** —
+scaling to multiple API workers needs Postgres + Celery/RQ.
+
+Logs are emitted via structlog as JSON when stderr is not a TTY (default
+in containers) or as human-readable text when running interactively.
+Override with `LOG_FORMAT=json|text`. Every log line carries
+`request_id` and (when present) `api_key_fp` — a 10-char SHA-256 prefix
+of the API key, never the raw key.
+
+The API starts even without `OPENAI_API_KEY` (the Legal Consultant just falls
+back to rule-based notes); set `DISABLE_LLM=1` to suppress the cloud call
+explicitly.
+
+Other security knobs (see [`.env.example`](.env.example)): `RATE_LIMIT_ANALYZE`
+(default `60/minute`), `RATE_LIMIT_REPORT` (default `10/minute`),
+`RATE_LIMIT_UPLOAD` (default `10/minute`), `MAX_REQUEST_BODY_MB`
+(default `5`), `ALLOWED_ORIGINS` (CORS allowlist; empty = no CORS).
+
+## Architecture
+
+The state machine in `src/application/orchestration/orchestrator.py` runs
+four agents per chunk: Extractor → Validator → Legal Consultant (RAG + LLM)
+→ Risk Auditor. Each step can degrade gracefully (no extractor, no LLM,
+empty RAG corpus) without breaking the pipeline. The full diagram set with
+the data-flow sequence diagram lives in [docs/arch.md](docs/arch.md).
+
+The **why** behind the load-bearing architectural choices —
+Clean Architecture + LangGraph, LoRA on -base, OpenAI behind a Strategy
+port, SQLite-backed jobs, traceability via extractor spans, JSONL RAG
+corpus — is documented as [Architecture Decision Records](docs/adr/).
+
+## Models and metrics
+
+See [docs/RESULTS.md](docs/RESULTS.md) for the complete F1 tables, RAGAS
+faithfulness / relevancy aggregates, and an honest breakdown of which
+categories work well and which do not.
+
+| Component | Status |
+|-----------|--------|
+| **v9.2 classifier** (DeBERTa-v3-base + LoRA r=64, 41 categories) | Tuned **micro F1 = 0.688, macro F1 = 0.579** (22/41 categories above F1 0.60) |
+| v8 extractor (DeBERTa-v3-base init from `deepset/deberta-v3-base-squad2`) | Trained, token-F1 = 0.277 — disabled by default; see RESULTS.md §2 |
+| Local RAG corpus | **48 article-level entries** (GDPR ×20, EU AI Act ×13, Practice Notes ×15) under `data/legal_corpus/*.jsonl`; seed via `scripts/seed_legal_corpus.py` |
+| **RAGAS faithfulness (v3 pipeline)** | mean = **0.513**, median = **0.700** on 3 CUAD contracts (was 0.231 in v2) |
+
+## LLM provider — OpenAI by default, swappable
+
+The `ILLMProvider` Strategy interface (`src/application/interfaces/illm_provider.py`)
+keeps the orchestrator and evaluator vendor-neutral. The current implementation
+is `OpenAIProvider` (`src/infrastructure/llm/openai_provider.py`) using
+`openai>=1.0` directly — no langchain dependency for production paths.
+
+Default model is `gpt-4o-mini` (best price / quality balance for the legal
+commentary and judge prompts we run). Override with `OPENAI_MODEL=gpt-4o`
+when higher quality is worth the cost.
+
+## Docker
+
+```bash
+docker compose up api
+# or
+docker build -f docker/Dockerfile --target inference -t contract-lens:latest .
+docker run -p 8000:8000 \
+  -e OPENAI_API_KEY=$OPENAI_API_KEY \
+  -e CLASSIFIER_MODEL=models/deberta-cuad-classifier \
+  -v $(pwd)/models:/app/models \
+  contract-lens:latest
+```
+
+## License
+
+MIT — see [LICENSE](LICENSE).
